@@ -1,0 +1,73 @@
+{
+  "name": "nist-security",
+  "version": "1",
+  "retrieved_at": "2026-10-27",
+  "license_verified_at": "2026-10-27",
+  "license": {
+    "basis": "NIST Technical Series publication terms: works authored by NIST employees are not subject to copyright protection within the United States; foreign rights are reserved, and to the extent NIST asserts rights outside the US it grants a non-exclusive, perpetual, paid-up, royalty-free, worldwide right to reprint works in all formats and derivative works. NIST requests citation plus 'Republished courtesy of the National Institute of Standards and Technology.' NIST also states that some works may have been written by third parties and may be subject to copyright protection.",
+    "source": "https://www.nist.gov/open/copyright-fair-use-and-licensing-statements-srd-data-software-and-technical-series-publications",
+    "redistribution_in_this_repository": "none: documents are downloaded locally by scripts/fetch_corpus.py into the git-ignored data/ directory; the evaluation dataset contains only short quotations used as relevance labels"
+  },
+  "documents": [
+    {
+      "key": "sp800-61r2",
+      "file": "NIST.SP.800-61r2.pdf",
+      "title": "Computer Security Incident Handling Guide (NIST SP 800-61 Revision 2)",
+      "publisher": "NIST",
+      "published": "2012-08",
+      "status": "withdrawn 2025-04-03; superseded in its entirety by SP 800-61r3 (per the withdrawal notice on page 1 of this PDF)",
+      "url": "https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-61r2.pdf",
+      "sha256": "b1c5ead0632dcfb979c59d8c462b094ad2465ddaf62d5c246289d6d9b4419df1",
+      "bytes": 1744473,
+      "third_party_authors": ["Karen Scarfone (Scarfone Cybersecurity)"]
+    },
+    {
+      "key": "sp800-61r3",
+      "file": "NIST.SP.800-61r3.pdf",
+      "title": "Incident Response Recommendations and Considerations for Cybersecurity Risk Management: A CSF 2.0 Community Profile (NIST SP 800-61r3)",
+      "publisher": "NIST",
+      "published": "2025-04",
+      "status": "current at retrieval",
+      "url": "https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-61r3.pdf",
+      "sha256": "e5593d6bb85daecec7e8d9549400c7b3473bcc3f06e469c82218073afa7fba2d",
+      "bytes": 1040566,
+      "third_party_authors": ["Karen Scarfone (Scarfone Cybersecurity)"]
+    },
+    {
+      "key": "csf-1.1",
+      "file": "NIST.CSWP.04162018.pdf",
+      "title": "Framework for Improving Critical Infrastructure Cybersecurity, Version 1.1",
+      "publisher": "NIST",
+      "published": "2018-04-16",
+      "status": "earlier version of the Cybersecurity Framework; CSF 2.0 is the later version (no withdrawal notice is present in this PDF)",
+      "url": "https://nvlpubs.nist.gov/nistpubs/CSWP/NIST.CSWP.04162018.pdf",
+      "sha256": "0f3ca796610ab024cbc3484cbd6799e19b4d9159d3634972a2a76af83f15fb92",
+      "bytes": 1062822,
+      "third_party_authors": []
+    },
+    {
+      "key": "csf-2.0",
+      "file": "NIST.CSWP.29.pdf",
+      "title": "The NIST Cybersecurity Framework (CSF) 2.0",
+      "publisher": "NIST",
+      "published": "2024-02-26",
+      "status": "current at retrieval",
+      "url": "https://nvlpubs.nist.gov/nistpubs/CSWP/NIST.CSWP.29.pdf",
+      "sha256": "3c31f46fee98cac0c4323453e5109291a213b4de7fef8c058af9bf67f717433c",
+      "bytes": 1518858,
+      "third_party_authors": []
+    },
+    {
+      "key": "sp800-63b-4",
+      "file": "NIST.SP.800-63B-4.pdf",
+      "title": "Digital Identity Guidelines: Authentication and Authenticator Management (NIST SP 800-63B-4)",
+      "publisher": "NIST",
+      "published": "2025-07",
+      "status": "current at retrieval",
+      "url": "https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-63B-4.pdf",
+      "sha256": "d9ab89576b5ae2cfb3ba37781110788dea27a85a5079496dbfc1a79834670afd",
+      "bytes": 993734,
+      "third_party_authors": ["James L. Fenton (Altmode Networks)", "Justin P. Richer (Bespoke Engineering)"]
+    }
+  ]
+}

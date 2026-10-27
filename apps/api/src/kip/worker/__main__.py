@@ -15,9 +15,13 @@ from kip.worker.runner import Worker
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Process durable ingestion jobs (no vector indexing)."
+        description="Process ingestion jobs: parse, embed, index in Qdrant and publish."
     )
-    parser.add_argument("--once", action="store_true", help="Claim at most one job, then exit.")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--once", action="store_true", help="Claim at most one job, then exit.")
+    mode.add_argument(
+        "--until-idle", action="store_true", help="Process due jobs until none remain, then exit."
+    )
     args = parser.parse_args()
     settings = Settings()
     engine = make_engine(settings.database_url.get_secret_value())
@@ -30,17 +34,19 @@ def main() -> None:
     signal.signal(signal.SIGTERM, shutdown)
     signal.signal(signal.SIGINT, shutdown)
     logging.basicConfig(level=logging.INFO)
+    # httpx logs every Qdrant request URL at INFO; keep worker logs to job-level events.
+    logging.getLogger("httpx").setLevel(logging.WARNING)
     try:
         while not stop.is_set():
             try:
                 worked = worker.run_once()
             except OperationalError:
-                if args.once:
+                if args.once or args.until_idle:
                     # Do not print SQL parameters / connection credentials in a traceback.
                     raise SystemExit("database unavailable") from None
                 logging.warning("Database unavailable; waiting to reconnect.")
                 worked = False
-            if args.once:
+            if args.once or (args.until_idle and not worked):
                 break
             if not worked:
                 stop.wait(settings.poll_seconds)

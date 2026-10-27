@@ -24,7 +24,7 @@ from rag.ingestion.identity import sha256_hex
 from tests.integration.conftest import Harness, InlineProcessor
 
 
-def test_roundtrip_preserves_offsets_and_keeps_publication_closed(harness: Harness) -> None:
+def test_roundtrip_preserves_offsets_and_publishes_after_vectors(harness: Harness) -> None:
     submission = harness.submit(("A sentence with useful recovery evidence. " * 130).encode())
     worker = harness.worker()
     assert worker.run_once()
@@ -35,11 +35,12 @@ def test_roundtrip_preserves_offsets_and_keeps_publication_closed(harness: Harne
         document = session.get(Document, submission.document_id)
         index = session.scalar(select(DocumentIndex))
         chunks = session.scalars(select(DocumentChunk).order_by(DocumentChunk.chunk_index)).all()
-        assert version.status == "processed"
-        assert job.status == "completed" and job.stage == "processed"
-        assert document.current_version_id is None
-        assert index.status == "building" and index.published_at is None
+        assert version.status == "ready"
+        assert job.status == "completed" and job.stage == "published"
+        assert document.current_version_id == version.id
+        assert index.status == "ready" and index.published_at is not None
         assert index.chunk_count == len(chunks) > 1
+        assert harness.client.count(harness.collection(), exact=True).count == len(chunks)
         canonical = harness.store.get(version.canonical_text_key, max_bytes=1_000_000).decode()
         assert sha256_hex(canonical.encode()) == version.text_sha256
         for chunk in chunks:

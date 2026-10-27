@@ -77,11 +77,13 @@ rate limiting and cancellation pub/sub, where loss is harmless.
 
 ## 3. Ingestion lifecycle
 
-Phase 2 implements submission, durable claiming, resource-limited subprocess parsing,
-canonical-text storage and chunk persistence. It stops at `processed` versions with
-`building` indexes. The vector operations and publication transitions below remain Phase 3
-work. The subprocess has a deadline on all platforms and CPU/address-space limits on
-Linux; network/syscall isolation is still deployment hardening, not a current guarantee.
+Phases 2 and 3 implement this lifecycle through the CLI and worker (the HTTP API is
+Phase 6): submission, durable claiming, resource-limited subprocess parsing, chunk
+persistence, embedding, Qdrant upserts and the fenced publication transaction. Embedding
+reuse by `text_sha256` is not implemented yet. Details:
+[vector indexing](vector-indexing.md). The subprocess has a deadline on all platforms and
+CPU/address-space limits on Linux; network/syscall isolation is still deployment
+hardening, not a current guarantee.
 
 ```mermaid
 sequenceDiagram

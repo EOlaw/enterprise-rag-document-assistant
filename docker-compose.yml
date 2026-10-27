@@ -46,6 +46,7 @@ services:
     environment:
       KIP_DATABASE_URL: postgresql+psycopg://kip:${POSTGRES_PASSWORD:-kip_dev_only}@postgres:5432/kip
       KIP_STORAGE_ROOT: /app/data/objects
+      KIP_QDRANT_URL: http://qdrant:6333
       HF_HOME: /app/data/huggingface
       HF_HUB_DISABLE_TELEMETRY: "1"
       TOKENIZERS_PARALLELISM: "false"
@@ -54,6 +55,9 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
+      qdrant:
+        # No healthcheck in the Qdrant image; an early outage is a retryable job error.
+        condition: service_started
     restart: unless-stopped
     stop_grace_period: 150s
 

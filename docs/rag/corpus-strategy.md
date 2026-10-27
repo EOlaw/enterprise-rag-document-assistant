@@ -10,6 +10,14 @@ fetch them into `data/corpus/` (git-ignored) and write a provenance manifest:
 Licences below must be re-verified at download time; this table records the reasoning, not
 legal advice.
 
+> **Phase 3 status:** the first slice of KB-1 is implemented as the
+> [`nist-security` dataset](../../evals/datasets/nist-security/README.md): SP 800-61r2/r3,
+> CSF 1.1/2.0 and SP 800-63B-4 (SP 800-53 was deferred to keep CPU indexing fast), pinned
+> by SHA-256 in a manifest and fetched by `scripts/fetch_corpus.py`. The licence basis was
+> verified against NIST's published statement on 2026-10-27. That statement also notes that
+> works by third-party authors may be copyrighted, and three documents list non-NIST
+> co-authors. KB-2, KB-3 and the synthetic fixtures are not built yet.
+
 ## Knowledge bases
 
 ### KB-1 "Security & Compliance" (tenant A), the first complete workflow

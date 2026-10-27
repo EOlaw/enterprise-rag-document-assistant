@@ -59,7 +59,10 @@ class ParseRequest:
 def _parse(connection: Connection, request: ParseRequest) -> None:
     try:
         if sys.platform == "linux":
-            ceiling = request.memory_mb * 1024 * 1024
+            # Headroom on top of what the interpreter and imported libraries already map:
+            # thread pools reserve large, mostly untouched virtual ranges, so an absolute
+            # cap can be exceeded before any document byte is parsed.
+            ceiling = _address_space_bytes() + request.memory_mb * 1024 * 1024
             resource.setrlimit(resource.RLIMIT_AS, (ceiling, ceiling))
             resource.setrlimit(
                 resource.RLIMIT_CPU, (request.timeout_seconds, request.timeout_seconds)
@@ -89,6 +92,15 @@ def _parse(connection: Connection, request: ParseRequest) -> None:
         connection.send(("parser_error", False))
     finally:
         connection.close()
+
+
+def _address_space_bytes() -> int:
+    """Current virtual address-space size of this process (Linux /proc)."""
+    with open("/proc/self/status", encoding="ascii") as status:  # noqa: PTH123
+        for line in status:
+            if line.startswith("VmSize:"):
+                return int(line.split()[1]) * 1024
+    return 0
 
 
 class SubprocessProcessor:

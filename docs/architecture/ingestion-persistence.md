@@ -1,5 +1,10 @@
 # Ingestion persistence (Phase 2)
 
+> **Phase 3 update:** the worker now continues past `processed` through embedding,
+> Qdrant indexing and publication, and a dense-search CLI exists. See
+> [vector indexing](vector-indexing.md). This guide still describes the persistence,
+> lease and parsing behaviour, which is unchanged.
+
 The `kip` package in `apps/api/src/` wraps the processing core with PostgreSQL, atomic
 local object storage and a durable worker. These are trusted administration commands.
 User accounts, permission checks and the HTTP API are not implemented yet.
@@ -58,8 +63,9 @@ docker compose stop
 The worker profile first runs migrations after Postgres is healthy. Postgres and Qdrant
 use named volumes, and `./data` is shared with the host for object storage and tokenizer
 caching. On Linux, ensure this directory is writable by container UID 10001. The worker
-runs without root privileges. Qdrant starts as an infrastructure dependency for Phase 3;
-this worker does not write vectors or require Qdrant to process documents. Only localhost
+runs without root privileges. Since Phase 3 the worker also needs Qdrant
+(`KIP_QDRANT_URL=http://qdrant:6333` in Compose) and caches the embedding model under
+`./data/huggingface`. Only localhost
 ports are exposed. Container removal does not remove named database volumes unless
 explicitly requested.
 
@@ -76,9 +82,10 @@ explicitly requested.
    validate the owned lease, check the document still exists, replace chunks with stable
    UUIDv5 IDs, persist processing metadata and complete the job with `stage=processed`.
 
-After step 4, the document version is **processed**, the document index is **building**,
-`published_at` is null and `documents.current_version_id` is unchanged. No version or index
-is marked ready. Phase 3 must write vectors and implement the publication transaction.
+In Phase 2, step 4 also completed the job at `stage=processed`. Since Phase 3, `processed`
+is a checkpoint inside the same attempt: the worker continues to embed, index and publish
+(see [vector indexing](vector-indexing.md)). Jobs completed by the Phase 2 worker can be
+continued with `kip requeue-processed --org <org_id>` without reparsing.
 Embedding text is retained separately from the exact citation text so indexing can later
 reuse the heading prefix without changing citation offsets.
 
@@ -91,7 +98,12 @@ over its successor: all these transitions check the token, status and lease expi
 Database outages can prevent recording failure; the lease then expires for later recovery.
 
 The child has a wall-clock deadline on all platforms and CPU/address-space limits on
-Linux. Windows currently enforces the deadline only. **The parser subprocess is not an
+Linux. Windows currently enforces the deadline only. Since Phase 3, `KIP_PARSE_MEMORY_MB`
+is headroom added to the child's address space at startup, not an absolute cap. With an
+absolute 1 GB cap, the Phase 3 container failed every parse (`parser_memory_limit`):
+the spawned child re-imported `qdrant_client`, whose numpy/grpc thread pools reserved
+1.17 GB of mostly untouched virtual memory (RSS was 130 MB). Heavy imports are now lazy,
+which brings the child's footprint to about 98 MB, and a unit test guards the import graph. **The parser subprocess is not an
 OS security sandbox:** network namespaces, syscall restrictions and equivalent Windows
 resource isolation remain deployment hardening work. The local storage root must be
 private to the application OS account; checks reject traversal and existing filesystem

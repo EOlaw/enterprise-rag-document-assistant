@@ -7,7 +7,9 @@ WORKDIR /app
 COPY pyproject.toml README.md LICENSE alembic.ini ./
 COPY rag ./rag
 COPY apps/api ./apps/api
-RUN pip install . \
+# CPU-only torch first; otherwise pip resolves the CUDA build (several GB).
+RUN pip install torch==2.14.1 --index-url https://download.pytorch.org/whl/cpu \
+    && pip install . \
     && groupadd --gid 10001 kip \
     && useradd --uid 10001 --gid kip --no-create-home kip \
     && mkdir -p /app/data \

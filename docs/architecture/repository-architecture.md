@@ -11,24 +11,24 @@ enterprise-rag-intelligence/
 │   ├── ingestion/            ✅ validation, identity (hashes, point ids), pure pipeline
 │   ├── parsing/              ✅ pdf, docx, txt/markdown parsers; normalization; canonical text
 │   ├── chunking/             ✅ token counters, sentence splitter, chunking strategies
-│   ├── embeddings/           Phase 3  model loading, batching, revision pinning, cache keys
-│   ├── indexing/             Phase 3  Qdrant collection management, upsert/publish/delete
-│   ├── retrieval/            Phase 3–4  dense.py, sparse.py (BM25 tokenizer), hybrid.py (RRF), reranker.py, orchestrator.py
+│   ├── embeddings/           ✅ Embedder protocol, pinned MiniLM loader, vector/token validation
+│   ├── indexing/             ✅ Qdrant collection checks, payload indexes, upsert/publish/delete/search
+│   ├── retrieval/            ✅ dense.py; Phase 4: sparse.py (BM25), hybrid.py (RRF), reranker.py
 │   ├── query/                Phase 4  normalization, identifier extraction, routing
 │   ├── context/              Phase 5  evidence sufficiency, token-budgeted selection
 │   ├── generation/           Phase 5  LLMProvider protocol, Ollama provider, prompt templates
 │   ├── citations/            Phase 5  label mapping, validity, support checks
-│   └── evaluation/           Phase 9  datasets, span→chunk relevance mapping, metrics, bootstrap
+│   └── evaluation/           ✅ quote-span labels, retrieval metrics, bootstrap CIs; lab UI Phase 9
 ├── apps/
 │   ├── api/                  ✅ Phase 2 infrastructure (package `kip`); HTTP/auth in Phase 6
-│   │   ├── src/kip/          ✅ cli.py, ingestion.py, settings.py, worker/, db/, storage/
+│   │   ├── src/kip/          ✅ cli.py, ingestion.py, retrieval.py, vectors.py, settings.py, worker/, db/, storage/
 │   │   └── migrations/       ✅ Alembic environment and frozen initial migration
 │   └── web/                  Phase 7  Next.js + TypeScript dashboard
 ├── packages/contracts/       Phase 7  TS types generated from the FastAPI OpenAPI schema
 ├── infrastructure/docker/    ✅ worker image; monitoring/ and aws/ remain future work
 ├── docker-compose.yml        ✅ Postgres, Qdrant, optional migration/worker profile
-├── evals/                    Phase 9  datasets/, configs/, reports/ (corpus itself is git-ignored)
-├── scripts/                  ✅ ingest_preview.py (pipeline inspection CLI); corpus download (Phase 3)
+├── evals/                    ✅ datasets/nist-security (manifest + questions), reports/ (corpus git-ignored)
+├── scripts/                  ✅ ingest_preview.py, fetch_corpus.py (SHA-256 pinned), evaluate_retrieval.py
 ├── tests/                    ✅ unit/, integration/; security/, evaluation/, e2e/ as phases land
 ├── docs/                     ✅ architecture/, rag/
 ├── .github/workflows/ci.yml  ✅ lint, format, mypy --strict, pytest (3.12, 3.13)

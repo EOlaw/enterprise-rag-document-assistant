@@ -37,7 +37,11 @@ Status legend: ✅ implemented and tested · 🧪 designed, to be implemented an
 * Observed on NIST SP 800-61r2 (80 pages): 295 chunks, mean 174 / max 200 tokens, ~2.6 s
   parse+chunk on a laptop CPU (single run; not a benchmark).
 
-## 3. Embeddings 🧪
+## 3. Embeddings ✅ (Phase 3; alternatives not yet evaluated)
+
+> Implemented as designed except for embedding reuse: unchanged chunks are currently
+> re-embedded. Model properties are verified at load; see
+> [vector indexing](../architecture/vector-indexing.md).
 
 * Baseline: `sentence-transformers/all-MiniLM-L6-v2` (384-d, cosine, normalized), pinned
   by **Hugging Face revision hash**, recorded in `embedding_models`.
@@ -48,7 +52,14 @@ Status legend: ✅ implemented and tested · 🧪 designed, to be implemented an
   creates a new index version (new collection), backfilled, evaluated, then switched;
   never mixed.
 
-## 4. Qdrant collection 🧪
+## 4. Qdrant collection ✅ dense part (Phase 3)
+
+> Implemented: one collection per index version named `kip_<fingerprint[:24]>`, the
+> `dense` vector, Qdrant's default HNSW settings, and payload indexes on `org_id`
+> (`is_tenant`), `kb_id`, `document_id`, `document_version_id`, `document_index_id`,
+> `chunk_index` and `published`. Not yet implemented: the `bm25` sparse vector
+> (Phase 4) and the `restricted`, `file_type`, `tags` and `uploaded_at` fields (they
+> arrive with document permissions and filters). The target configuration is below.
 
 One collection **per index version** (`kip_chunks__<index_fingerprint>`), multi-tenant via payload:
 
