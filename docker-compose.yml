@@ -1,0 +1,62 @@
+name: enterprise-rag
+
+services:
+  postgres:
+    image: postgres:17.11
+    environment:
+      POSTGRES_DB: kip
+      POSTGRES_USER: kip
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-kip_dev_only}
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kip -d kip"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  qdrant:
+    image: qdrant/qdrant:v1.18.3
+    ports:
+      - "127.0.0.1:${QDRANT_PORT:-6333}:6333"
+    volumes:
+      - qdrant_data:/qdrant/storage
+
+  migrate:
+    profiles: [worker]
+    build:
+      context: .
+      dockerfile: infrastructure/docker/worker.Dockerfile
+    environment:
+      KIP_DATABASE_URL: postgresql+psycopg://kip:${POSTGRES_PASSWORD:-kip_dev_only}@postgres:5432/kip
+    command: ["alembic", "upgrade", "head"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  worker:
+    profiles: [worker]
+    build:
+      context: .
+      dockerfile: infrastructure/docker/worker.Dockerfile
+    init: true
+    command: ["kip-worker"]
+    environment:
+      KIP_DATABASE_URL: postgresql+psycopg://kip:${POSTGRES_PASSWORD:-kip_dev_only}@postgres:5432/kip
+      KIP_STORAGE_ROOT: /app/data/objects
+      HF_HOME: /app/data/huggingface
+      HF_HUB_DISABLE_TELEMETRY: "1"
+      TOKENIZERS_PARALLELISM: "false"
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    stop_grace_period: 150s
+
+volumes:
+  postgres_data:
+  qdrant_data:

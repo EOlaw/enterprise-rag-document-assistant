@@ -1,0 +1,54 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13"]
+    env:
+      HF_HUB_DISABLE_TELEMETRY: "1"
+      TEST_DATABASE_URL: postgresql+psycopg://kip:kip_test@127.0.0.1:5432/kip_test
+    services:
+      postgres:
+        image: postgres:17.11
+        env:
+          POSTGRES_DB: kip_test
+          POSTGRES_USER: kip
+          POSTGRES_PASSWORD: kip_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U kip -d kip_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - name: Cache Hugging Face tokenizers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: hf-${{ runner.os }}-minilm-l6-v2
+      - name: Install
+        run: python -m pip install -e ".[dev]"
+      - name: Lint
+        run: |
+          ruff check .
+          ruff format --check .
+      - name: Type check
+        run: mypy rag apps/api/src/kip apps/api/migrations scripts
+      - name: Tests
+        run: pytest --cov=rag --cov=kip --cov-report=term-missing
