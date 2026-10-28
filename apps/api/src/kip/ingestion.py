@@ -26,6 +26,11 @@ class Submission:
     duplicate: bool
 
 
+def job_key(org_id: UUID, version_id: UUID, index_version_id: UUID) -> str:
+    """Idempotency key: at most one ingestion job per (version, index version)."""
+    return sha256_hex(f"ingest:{org_id}:{version_id}:{index_version_id}".encode())
+
+
 def submit_document(
     sessions: sessionmaker[Session],
     store: ObjectStore,
@@ -132,7 +137,7 @@ def submit_document(
             version.storage_key = object_key(org_id, version.id, "original")
             store.put(version.storage_key, data)
 
-        key = sha256_hex(f"ingest:{org_id}:{version.id}:{index.id}".encode())
+        key = job_key(org_id, version.id, index.id)
         job = session.scalar(select(IngestionJob).where(IngestionJob.idempotency_key == key))
         if job is None:
             job = IngestionJob(

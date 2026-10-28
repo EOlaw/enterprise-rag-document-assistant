@@ -1,0 +1,264 @@
+{
+  "run_id": "20261027T213425Z-sufficiency-calibration",
+  "kind": "sufficiency-calibration",
+  "tuning_questions": 48,
+  "settings": {
+    "mode": "auto",
+    "rerank": true,
+    "top_k": 12,
+    "budget_tokens": 1500
+  },
+  "result": {
+    "min_coverage": 0.0,
+    "min_rerank": -2.0,
+    "balanced_accuracy": 0.987,
+    "confusion": {
+      "answerable/insufficient": 1,
+      "answerable/sufficient": 37,
+      "unanswerable/insufficient": 10
+    },
+    "n": 48
+  },
+  "signals": [
+    {
+      "answerable": true,
+      "coverage": 1.0,
+      "top_rerank": 7.643548011779785
+    },
+    {
+      "answerable": true,
+      "coverage": 0.4,
+      "top_rerank": 2.3374791145324707
+    },
+    {
+      "answerable": true,
+      "coverage": 0.667,
+      "top_rerank": 4.980149269104004
+    },
+    {
+      "answerable": true,
+      "coverage": 0.875,
+      "top_rerank": 0.20802724361419678
+    },
+    {
+      "answerable": true,
+      "coverage": 0.571,
+      "top_rerank": 8.064750671386719
+    },
+    {
+      "answerable": true,
+      "coverage": 1.0,
+      "top_rerank": 8.473517417907715
+    },
+    {
+      "answerable": true,
+      "coverage": 0.556,
+      "top_rerank": 0.3661366105079651
+    },
+    {
+      "answerable": true,
+      "coverage": 1.0,
+      "top_rerank": 9.414571762084961
+    },
+    {
+      "answerable": true,
+      "coverage": 0.4,
+      "top_rerank": -0.331279456615448
+    },
+    {
+      "answerable": true,
+      "coverage": 0.4,
+      "top_rerank": 4.853565216064453
+    },
+    {
+      "answerable": true,
+      "coverage": 1.0,
+      "top_rerank": 8.596271514892578
+    },
+    {
+      "answerable": true,
+      "coverage": 0.857,
+      "top_rerank": 4.729744911193848
+    },
+    {
+      "answerable": true,
+      "coverage": 1.0,
+      "top_rerank": 6.877476692199707
+    },
+    {
+      "answerable": true,
+      "coverage": 1.0,
+      "top_rerank": 8.959331512451172
+    },
+    {
+      "answerable": true,
+      "coverage": 0.714,
+      "top_rerank": -0.589354395866394
+    },
+    {
+      "answerable": true,
+      "coverage": 0.6,
+      "top_rerank": 6.446008682250977
+    },
+    {
+      "answerable": true,
+      "coverage": 0.5,
+      "top_rerank": -1.214097023010254
+    },
+    {
+      "answerable": true,
+      "coverage": 1.0,
+      "top_rerank": 8.732307434082031
+    },
+    {
+      "answerable": true,
+      "coverage": 1.0,
+      "top_rerank": 8.239089012145996
+    },
+    {
+      "answerable": true,
+      "coverage": 1.0,
+      "top_rerank": 8.513035774230957
+    },
+    {
+      "answerable": true,
+      "coverage": 0.75,
+      "top_rerank": 4.506401062011719
+    },
+    {
+      "answerable": true,
+      "coverage": 1.0,
+      "top_rerank": 6.630072593688965
+    },
+    {
+      "answerable": true,
+      "coverage": 0.875,
+      "top_rerank": 4.368273735046387
+    },
+    {
+      "answerable": true,
+      "coverage": 1.0,
+      "top_rerank": 8.67496109008789
+    },
+    {
+      "answerable": true,
+      "coverage": 1.0,
+      "top_rerank": 8.405684471130371
+    },
+    {
+      "answerable": true,
+      "coverage": 0.889,
+      "top_rerank": 5.568752765655518
+    },
+    {
+      "answerable": true,
+      "coverage": 0.846,
+      "top_rerank": 7.699294090270996
+    },
+    {
+      "answerable": true,
+      "coverage": 1.0,
+      "top_rerank": 7.7899370193481445
+    },
+    {
+      "answerable": true,
+      "coverage": 0.667,
+      "top_rerank": 6.604535102844238
+    },
+    {
+      "answerable": true,
+      "coverage": 0.75,
+      "top_rerank": 7.6377716064453125
+    },
+    {
+      "answerable": true,
+      "coverage": 0.571,
+      "top_rerank": -2.7228214740753174
+    },
+    {
+      "answerable": true,
+      "coverage": 1.0,
+      "top_rerank": 9.426131248474121
+    },
+    {
+      "answerable": true,
+      "coverage": 0.778,
+      "top_rerank": 5.983048915863037
+    },
+    {
+      "answerable": true,
+      "coverage": 1.0,
+      "top_rerank": 5.636247634887695
+    },
+    {
+      "answerable": true,
+      "coverage": 1.0,
+      "top_rerank": 5.875776290893555
+    },
+    {
+      "answerable": true,
+      "coverage": 1.0,
+      "top_rerank": 1.8295636177062988
+    },
+    {
+      "answerable": true,
+      "coverage": 0.833,
+      "top_rerank": 7.64535665512085
+    },
+    {
+      "answerable": true,
+      "coverage": 0.889,
+      "top_rerank": 5.613785743713379
+    },
+    {
+      "answerable": false,
+      "coverage": 0.0,
+      "top_rerank": -8.980144500732422
+    },
+    {
+      "answerable": false,
+      "coverage": 0.0,
+      "top_rerank": -9.516683578491211
+    },
+    {
+      "answerable": false,
+      "coverage": 0.5,
+      "top_rerank": -2.784886360168457
+    },
+    {
+      "answerable": false,
+      "coverage": 0.75,
+      "top_rerank": -2.7465548515319824
+    },
+    {
+      "answerable": false,
+      "coverage": 0.5,
+      "top_rerank": -2.709808111190796
+    },
+    {
+      "answerable": false,
+      "coverage": 0.25,
+      "top_rerank": -4.770247459411621
+    },
+    {
+      "answerable": false,
+      "coverage": 0.167,
+      "top_rerank": -6.563694000244141
+    },
+    {
+      "answerable": false,
+      "coverage": 1.0,
+      "top_rerank": -5.816449165344238
+    },
+    {
+      "answerable": false,
+      "coverage": 0.667,
+      "top_rerank": -5.112548351287842
+    },
+    {
+      "answerable": false,
+      "coverage": 0.6,
+      "top_rerank": -7.209303379058838
+    }
+  ]
+}

@@ -43,9 +43,10 @@ class FlakyIndex:
 
     def __init__(self, inner: QdrantVectorIndex, fail: dict[str, int]) -> None:
         self.inner = inner
-        self.fail = dict(fail)
+        self.fail = fail  # shared by every index this factory creates
         self.collection = inner.collection
         self.dimension = inner.dimension
+        self.sparse = inner.sparse
 
     def _maybe_fail(self, operation: str) -> None:
         if self.fail.get(operation, 0) > 0:
@@ -67,6 +68,7 @@ class FlakyIndex:
         self.inner.set_published(document_index_id, published)
 
     def delete_document_index(self, document_index_id: UUID) -> None:
+        self._maybe_fail("delete")
         self.inner.delete_document_index(document_index_id)
 
     def count(self, document_index_id: UUID, *, published: bool | None = None) -> int:
@@ -77,12 +79,17 @@ class FlakyIndex:
     def search(self, vector, *, org_id, kb_ids, limit):  # type: ignore[no-untyped-def]
         return self.inner.search(vector, org_id=org_id, kb_ids=kb_ids, limit=limit)
 
+    def search_sparse(self, terms, *, org_id, kb_ids, limit):  # type: ignore[no-untyped-def]
+        return self.inner.search_sparse(terms, org_id=org_id, kb_ids=kb_ids, limit=limit)
+
 
 def flaky(harness: Harness, **fail: int):  # type: ignore[no-untyped-def]
+    remaining = dict(fail)
+
     def factory(index: IndexVersion, model: EmbeddingModel) -> FlakyIndex:
         inner = harness.vectors(index, model)
         assert isinstance(inner, QdrantVectorIndex)
-        return FlakyIndex(inner, fail)
+        return FlakyIndex(inner, remaining)
 
     return factory
 
@@ -92,8 +99,8 @@ def make_due(harness: Harness, job_id: UUID) -> None:
         session.get(IngestionJob, job_id).run_after = utcnow() - timedelta(seconds=1)
 
 
-def point_payloads(harness: Harness) -> list[dict]:
-    points, _ = harness.client.scroll(harness.collection(), limit=1000, with_payload=True)
+def point_payloads(harness: Harness, index_id: UUID | None = None) -> list[dict]:
+    points, _ = harness.client.scroll(harness.collection(index_id), limit=1000, with_payload=True)
     return [point.payload for point in points]
 
 

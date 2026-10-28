@@ -1,0 +1,11 @@
+{
+  "description": "Publication lineage between SEPARATE documents in this corpus (not versions of one document). Keys are newer publications; values are older publications covering the same subject. Used only to measure how often older publications are retrieved for questions labelled on newer ones. Added in Phase 4 as a separate file so questions.jsonl and corpus.json, and the Phase 3 hashes, are unchanged.",
+  "evidence": {
+    "sp800-61r3": "The SP 800-61r2 PDF states on page 1 that it was withdrawn on 2025-04-03 and superseded in its entirety by SP 800-61r3.",
+    "csf-2.0": "CSF 2.0 (2024) is the later version of the Cybersecurity Framework; the CSF 1.1 PDF (2018) carries no withdrawal notice."
+  },
+  "newer": {
+    "sp800-61r3": ["sp800-61r2"],
+    "csf-2.0": ["csf-1.1"]
+  }
+}

@@ -31,6 +31,8 @@ class Dataset:
     manifest: dict[str, Any]
     questions_sha256: str
     manifest_sha256: str
+    # Newer publication key -> older publication keys (separate documents, optional file).
+    lineage: dict[str, list[str]] = field(default_factory=dict)
 
     @property
     def document_keys(self) -> set[str]:
@@ -67,6 +69,13 @@ def load_dataset(folder: Path) -> Dataset:
             raise ValueError(f"questions.jsonl line {line_number}: {'; '.join(problems)}")
         seen.add(question.id)
         questions.append(question)
+    lineage: dict[str, list[str]] = {}
+    lineage_path = folder / "lineage.json"
+    if lineage_path.exists():
+        lineage = json.loads(lineage_path.read_text(encoding="utf-8"))["newer"]
+        named = set(lineage) | {key for older in lineage.values() for key in older}
+        if not named <= keys:
+            raise ValueError(f"lineage.json names unknown documents: {sorted(named - keys)}")
     return Dataset(
         manifest["name"],
         manifest["version"],
@@ -74,6 +83,7 @@ def load_dataset(folder: Path) -> Dataset:
         manifest,
         hashlib.sha256(question_bytes).hexdigest(),
         hashlib.sha256(manifest_bytes).hexdigest(),
+        lineage,
     )
 
 

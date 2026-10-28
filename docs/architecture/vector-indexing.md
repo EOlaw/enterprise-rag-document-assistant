@@ -1,5 +1,9 @@
 # Embeddings, vector indexing and dense retrieval (Phase 3)
 
+> **Phase 4 update:** BM25, hybrid search, reranking, vector cleanup, candidate
+> replenishment and failed-job retry are described in
+> [hybrid retrieval](hybrid-retrieval.md). Items marked *(Phase 4)* below are addressed there.
+
 Phase 3 extends the Phase 2 worker from "chunks persisted" to "searchable", and adds a
 scoped dense-search CLI. PostgreSQL remains the authority for what is visible; Qdrant only
 proposes candidates. Authentication, the HTTP API, BM25/hybrid search, reranking and
@@ -159,19 +163,19 @@ The first reproducible retrieval evaluation is described in
 
 * **No access control beyond tenant/KB scope.** The CLI trusts its operator; users,
   roles and document-level grants arrive with the API.
-* **Deleting published documents leaves vectors.** They are invisible but occupy
-  candidate slots until a cleanup/reconciler job exists. If many candidates are dropped,
-  results can be fewer than `top_k`. `dropped_by_recheck` makes this visible.
-* **No reconciler yet** for points whose document index failed permanently, or for
-  superseded points whose unpublish call failed (best effort, logged nothing).
+* *(Phase 4)* **Deleting published documents leaves vectors.** `kip cleanup-vectors`
+  now removes them with retryable two-phase cleanup, and search replenishes candidates
+  dropped by the re-check (bounded by `SEARCH_MAX_CANDIDATES`).
+* **Partial reconciler:** cleanup covers deleted documents and superseded versions, but
+  not unpublished points of a newer version whose job failed permanently.
 * **Embedding reuse across versions is not implemented.** Unchanged chunks are re-embedded
   (about 57 chunks/s for 190-token chunks on the development CPU).
 * **Model loads take a lease-heartbeat thread**, but a stuck download cannot be killed;
   the lease is still fenced, so a stale attempt cannot commit.
-* **Dense-only retrieval is weak on identifiers and some paraphrases** (see the
-  evaluation). Hybrid BM25 and reranking are Phase 4.
+* *(Phase 4)* **Dense-only retrieval is weak on identifiers and some paraphrases.**
+  BM25, hybrid and reranking were added and compared; see the hybrid retrieval guide.
 * **Multiple index versions:** a newer version becomes current when it is ready in *any*
   index. It is absent from other index versions until they process it; older content is
   never shown in its place.
 * **Table-of-contents chunks** (dot leaders and page numbers) are indexed and sometimes
-  retrieved; no TOC filtering exists yet.
+  retrieved. Phase 4 measures how often in every mode; no TOC filtering exists yet.

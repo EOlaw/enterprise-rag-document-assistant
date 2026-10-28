@@ -34,10 +34,10 @@ TOKENIZER_VERSION: Literal["bm25-v1"] = "bm25-v1"
 _TOKEN = re.compile(r"[^\W_]+(?:[-._/:][^\W_]+)*(?:\(\d+\))?")
 _PART = re.compile(r"[^\W_]+")
 _STOP_WORDS = frozenset(
-    """a an and are as at be been but by for from has have if in into is it its of on or
-    such that the their then there these this those to was were will with which who whom
-    what when where why how can could should would may might must shall do does did not
-    no than so also any all each other some our we you they he she them his her""".split()
+    """a an and are as at be been but by for from has have if in into is it its of on or such
+    that the their then there these this those to was were will with which who whom what
+    when where why how can could should would may might must shall do does did not no than
+    so also any all each other some our we you they he she them his her""".split()  # noqa: SIM905
 )
 
 

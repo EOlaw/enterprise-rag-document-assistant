@@ -4,11 +4,11 @@
 
 **From source documents to traceable evidence.**
 
-A foundation for enterprise RAG: document processing, durable ingestion, vector
-indexing, and tenant-scoped dense search that returns exact citation positions.
-Hybrid retrieval and grounded answers are on the roadmap.
+A foundation for enterprise RAG: document processing, durable ingestion, and
+tenant-scoped dense, BM25, and hybrid search with optional reranking. Results carry exact
+citation positions. Grounded answers are on the roadmap.
 
-[![Development stage: Phase 3 implemented](https://img.shields.io/badge/stage-phase_3_implemented-0F766E?style=flat-square)](#implementation-status)
+[![Development stage: Phase 4 implemented](https://img.shields.io/badge/stage-phase_4_implemented-0F766E?style=flat-square)](#implementation-status)
 [![Python: 3.12 and later](https://img.shields.io/badge/python-3.12%2B-2563EB?style=flat-square&logo=python&logoColor=white)](#quick-start)
 [![License: MIT](https://img.shields.io/badge/license-MIT-475569?style=flat-square)](LICENSE)
 
@@ -16,16 +16,18 @@ Hybrid retrieval and grounded answers are on the roadmap.
 <a href="#how-it-works"><img alt="Explore the flow" src="https://img.shields.io/badge/Explore_the_flow-0F766E?style=for-the-badge"></a>
 <a href="docs/architecture/ingestion-persistence.md"><img alt="Worker guide" src="https://img.shields.io/badge/Worker_guide-475569?style=for-the-badge"></a>
 <a href="docs/architecture/vector-indexing.md"><img alt="Indexing and search guide" src="https://img.shields.io/badge/Indexing_%26_search-475569?style=for-the-badge"></a>
+<a href="docs/architecture/hybrid-retrieval.md"><img alt="Hybrid retrieval guide" src="https://img.shields.io/badge/Hybrid_%26_reranking-475569?style=for-the-badge"></a>
 <a href="#roadmap"><img alt="View roadmap" src="https://img.shields.io/badge/Roadmap-92400E?style=for-the-badge"></a>
 
 </div>
 
 > [!IMPORTANT]
 > **Working today:** processing, PostgreSQL persistence, a durable background worker,
-> pinned MiniLM embeddings, Qdrant indexing with PostgreSQL-gated publication, and a
-> dense-search CLI with a reproducible retrieval benchmark. **Coming next:** BM25, hybrid
-> fusion, and reranking. Answer generation, authentication, the public API, and the
-> dashboard are designed but not implemented.
+> pinned MiniLM embeddings, and Qdrant indexing (dense + BM25) with PostgreSQL-gated
+> publication. Search runs in dense, BM25, or hybrid (RRF) mode, with optional pinned
+> cross-encoder reranking, and has a measured four-way comparison. Vector cleanup,
+> candidate replenishment, and failed-job retry are available. **Not implemented:** answer
+> generation, authentication and permissions, the public API, and the dashboard.
 
 ## Implementation status
 
@@ -39,13 +41,15 @@ Hybrid retrieval and grounded answers are on the roadmap.
 | Background processing | Expiring leases, heartbeats, bounded retries, crash recovery, and stable chunk IDs | Implemented |
 | Embeddings | MiniLM-L6-v2 at a pinned commit; dimension, window, and normalization verified; over-long input refused | Implemented |
 | Vector indexing | Qdrant collection checks, tenant payload indexes, deterministic upserts, publication only after vectors are verified | Implemented |
-| Dense search | `kip search` with mandatory organization/KB scope and a PostgreSQL re-check of every candidate | Implemented |
-| Evaluation | Pinned public NIST corpus, 38 quote-labelled questions, metrics with bootstrap intervals | Implemented (baseline) |
-| Developer tools | Preview CLI, ingestion and search CLI, worker image, and Docker Compose | Implemented |
-| Retrieval and answers | BM25, fusion, reranking, and grounded generation | Planned |
+| Search | Dense, BM25 (Qdrant sparse vectors, IDF), and hybrid RRF modes sharing one scope filter and one PostgreSQL re-check; bounded candidate replenishment | Implemented |
+| Reranking | Optional pinned cross-encoder over the top 30; pairs over 512 tokens refused | Implemented |
+| Operations | Index-version upgrade (`reindex`, coverage-checked activation), retryable vector cleanup, failed-job retry | Implemented |
+| Evaluation | Pinned public NIST corpus, 38 quote-labelled questions, four-way comparison with paired bootstrap differences, older-publication and TOC diagnostics | Implemented |
+| Developer tools | Preview CLI, ingestion, search, and maintenance CLI, worker image, and Docker Compose | Implemented |
+| Answers | Context selection, grounded generation, citation verification, and abstention | Planned |
 | User experience | Authentication, authorization, REST API, dashboard, and evaluation UI | Planned |
 
-Retrieval quality has been measured for dense search only (see [Evaluation](#evaluation)).
+Retrieval quality has been measured for four configurations (see [Evaluation](#evaluation)).
 No answer-quality metrics exist, because nothing generates answers yet.
 
 ## How it works
@@ -145,23 +149,29 @@ Solid boxes work today through the CLI. Dashed boxes are planned.
 flowchart TB
     question["Query + organization + KBs"] --> scope["Scope check<br/>KBs belong to org, not deleted"]
     scope --> embed["Embed query<br/>refuse if over 254 tokens"]
-    embed --> dense["Qdrant dense search<br/>org, KB, published filters"]
-    vectors[("Qdrant vectors")] --> dense
-    dense --> recheck["PostgreSQL re-check<br/>tenant, deletion, current version, index ready"]
-    recheck --> results["Chunks with exact offsets,<br/>pages, headings, scores"]
-    results -.-> hybrid["BM25 + fusion + rerank"]
-    hybrid -.-> generate["Grounded answer or abstain"]
+    scope --> encode["BM25 encode<br/>identifiers kept whole"]
+    embed --> dense["Qdrant dense search"]
+    encode --> sparse["Qdrant BM25 search"]
+    vectors[("Qdrant: dense + bm25<br/>shared org/KB/published filter")] --> dense & sparse
+    dense --> recheck["PostgreSQL re-check + replenish<br/>tenant, deletion, current version, index ready"]
+    sparse --> recheck
+    recheck --> fuse["RRF over visible lists"]
+    fuse --> rerank["Optional cross-encoder<br/>top 30, pinned, no truncation"]
+    rerank --> results["Chunks with exact offsets,<br/>pages, ranks, scores"]
+    results -.-> generate["Grounded answer or abstain"]
 
     classDef working fill:#f0fdfa,stroke:#0f766e,color:#134e4a
     classDef planned fill:#fffbeb,stroke:#b45309,color:#78350f,stroke-dasharray:5 5
-    class question,scope,embed,dense,vectors,recheck,results working
-    class hybrid,generate planned
+    class question,scope,embed,encode,dense,sparse,vectors,recheck,fuse,rerank,results working
+    class generate planned
 ```
 
 Qdrant proposes candidates; PostgreSQL decides what is returned, and only re-checked
-chunks carry text. Scores are cosine similarities for one query, not probabilities.
-See [vector indexing and search](docs/architecture/vector-indexing.md) for the failure and
-recovery matrix.
+chunks carry text. Fusion uses ranks only. Cosine, BM25, RRF, and cross-encoder scores
+are separate scales, and none is a probability. See
+[vector indexing and search](docs/architecture/vector-indexing.md) and
+[hybrid retrieval](docs/architecture/hybrid-retrieval.md) for failure handling, the upgrade
+path, and maintenance commands.
 
 ## Quick start
 
@@ -219,7 +229,7 @@ Bootstrap a local organization, knowledge base, and building index using the mod
 verified during development. Replace `path/to/guide.pdf` with your document's path:
 
 ```powershell
-$setup = kip bootstrap --revision 1110a243fdf4706b3f48f1d95db1a4f5529b4d41 | ConvertFrom-Json
+$setup = kip bootstrap --revision 1110a243fdf4706b3f48f1d95db1a4f5529b4d41 --sparse bm25 | ConvertFrom-Json
 
 $upload = kip submit "path/to/guide.pdf" `
     --org $setup.org_id --kb $setup.kb_id `
@@ -230,7 +240,15 @@ kip job $upload.job_id --org $setup.org_id      # status=completed, stage=publis
 
 kip activate-index $setup.index_version_id
 kip search "how should incident evidence be retained?" --org $setup.org_id --kb $setup.kb_id
+kip search "RC.RP-01" --org $setup.org_id --kb $setup.kb_id --mode sparse
+kip search "incident recovery plan" --org $setup.org_id --kb $setup.kb_id --mode hybrid --rerank --explain
 ```
+
+`--sparse bm25` creates a hybrid index version; without it the index is dense-only.
+`--mode auto` (the default) uses hybrid when the index version supports it. Existing
+dense-only deployments move to hybrid with a new index version and `kip reindex`; see the
+[upgrade path](docs/architecture/hybrid-retrieval.md#upgrade-path-for-existing-dense-collections).
+Maintenance: `kip retry-failed --org <id>`, `kip cleanup-vectors --org <id>`.
 
 `--until-idle` processes every due job, then exits; without a flag the worker keeps
 polling. The first run downloads the pinned model (about 90 MB); afterwards
@@ -262,34 +280,41 @@ Configuration lives in environment variables or `.env`; defaults are documented 
 
 ## Evaluation
 
-The first retrieval benchmark uses five public NIST publications, pinned by SHA-256, and 38
-questions labelled with quotes. Labels are located in the stored canonical text, so they
-stay valid across chunking configurations. Run
+The benchmark uses five public NIST publications, pinned by SHA-256, and 38 questions
+labelled with quotes located in the stored canonical text. The Phase 4 run
+[`20261027T115951Z-compare-f701a4f0`](evals/reports/20261027T115951Z-compare-f701a4f0/report.md)
+compares four configurations on identical questions (CPU, 95% bootstrap intervals):
+
+| Configuration | Recall@5 | Recall@10 | MRR@10 | p50 / p95 latency |
+| :--- | :---: | :---: | :---: | :---: |
+| Dense (Phase 3 baseline) | 0.553 [0.39, 0.70] | 0.711 [0.57, 0.86] | 0.392 [0.27, 0.51] | 38 / 52 ms |
+| BM25 | 0.776 [0.64, 0.89] | 0.829 [0.71, 0.93] | 0.611 [0.48, 0.73] | 15 / 50 ms |
+| Hybrid (RRF, k=60) | 0.789 [0.66, 0.89] | 0.868 [0.76, 0.96] | 0.554 [0.42, 0.68] | 90 / 117 ms |
+| Hybrid + rerank | 0.829 [0.71, 0.93] | 0.882 [0.78, 0.97] | 0.724 [0.60, 0.84] | 711 / 790 ms |
+
+- **Baseline preserved:** dense reproduces the Phase 3 run exactly, with identical top-5
+  lists for all 38 questions, on both the old and new index versions. A repeated four-way
+  run was identical apart from latency.
+- **Paired differences:** BM25 vs dense ΔRecall@5 +0.22 [+0.05, +0.38]. Hybrid vs BM25 shows
+  **no measurable difference** (+0.01 [−0.11, +0.13]). Reranking vs hybrid improves ordering
+  (ΔMRR@10 +0.17 [+0.05, +0.29]), but its Recall@5 change (+0.04) is within noise.
+- **Categories (Recall@5, dense → BM25 → hybrid → rerank):** paraphrase 0.25 → 0.25 → 0.50 →
+  0.63 (n=8); identifier 0.33 → 1.00 → 0.67 → 1.00 (n=3); the small categories are
+  anecdotal.
+- **Older publications are not handled:** for 11 questions labelled on SP 800-61r3 or
+  CSF 2.0, the older, separate publication appears in the top 5 in 5, 3, 4, and 2 of them.
+  With reranking, the withdrawn SP 800-61r2 still ranks first for one question. Ranking
+  models do not encode recency or authority.
+- **Table-of-contents chunks** appear in the top 5 for 9, 5, 6, and 5 of 38 questions.
+- **Isolation:** 0 results from a second tenant holding identical documents, in every mode.
+
+The questions were written by an AI assistant reading the documents and have **not been
+independently human-reviewed**. They likely reuse document vocabulary, which favours BM25.
+No parameter was tuned on them. Treat the numbers as development measurements, not
+quality claims. Details are in the [hybrid retrieval guide](docs/architecture/hybrid-retrieval.md#evaluation)
+and the [dataset README](evals/datasets/nist-security/README.md). The Phase 3 dense report
 [`20261027T100544Z-dense-120db434`](evals/reports/20261027T100544Z-dense-120db434/report.md)
-measured **dense retrieval only** (MiniLM-L6-v2, 200-token structure-aware chunks, CPU):
-
-| Metric | @1 | @5 | @10 |
-| :--- | :---: | :---: | :---: |
-| Recall | 0.25 [0.12, 0.39] | 0.55 [0.39, 0.70] | 0.71 [0.57, 0.86] |
-| MRR | 0.26 | 0.37 | 0.39 |
-| nDCG | 0.26 | 0.39 | 0.44 |
-
-- **Weak spots:** paraphrase questions (Recall@5 0.25, n=8) and exact identifiers such as
-  `RC.RP-01` (0.33, n=3). These motivate BM25 and reranking in Phase 4.
-- **Superseded guidance:** in 2 of 3 version-sensitive questions with a superseded
-  source, the withdrawn SP 800-61r2 or CSF 1.1 appeared in the top 5. Nothing ranks by
-  recency or authority yet.
-- **Isolation:** 0 results came from a second tenant holding identical copies of two
-  documents.
-- **Latency (p50/p95):** 46/62 ms per query on a laptop CPU, excluding the one-time
-  6.4 s model load.
-- **Reproducibility:** a repeated run produced identical metrics and identical top-5
-  lists for every question.
-
-Brackets are 95% bootstrap intervals; with 38 questions they are wide. The questions were
-written by an AI assistant and have **not been independently human-reviewed**. Treat the
-numbers as a development baseline, not a quality claim. Provenance, licence notes, and
-reproduction steps are in the [dataset README](evals/datasets/nist-security/README.md).
+is kept unchanged.
 
 ## Verification
 
@@ -298,8 +323,8 @@ status.
 
 | Check | Recorded result |
 | :--- | :--- |
-| Test suite, real services | **228 passed**, 5 skipped, against PostgreSQL 17.11 and Qdrant 1.18.3 |
-| Test suite, no services | 181 passed, 52 skipped (SQLite and in-process Qdrant) |
+| Test suite, real services | **310 passed**, 5 skipped, against PostgreSQL 17.11 and Qdrant 1.18.3 |
+| Test suite, no services | 236 passed, 79 skipped (SQLite and in-process Qdrant) |
 | Line coverage | **94%** combined across `rag` and `kip` |
 | Static checks | Ruff lint/format and strict mypy passed |
 | Real model | Pinned MiniLM: 384-d unit vectors, 256-token window, and over-long input refused; chunker and embedder token counts agree |
@@ -307,14 +332,18 @@ status.
 | Tenant isolation | Identical content in two tenants; a forged Qdrant payload is removed by the PostgreSQL re-check |
 | Phase 2 upgrade path | The Phase 2 smoke document was requeued and published without reparsing: 9 vectors |
 | Corpus indexing | 5 NIST PDFs plus 2 foreign-tenant copies: 1,305 points, all published on the first attempt in 54 s on CPU |
-| Linux worker image | Built with CPU-only PyTorch (2.11 GB, no CUDA packages); processed, published, and searched a document inside Compose. This found and fixed a parser memory-limit defect; see the [indexing guide](docs/architecture/vector-indexing.md#container-verification) |
+| Linux worker image | Built with CPU-only PyTorch (2.11 GB, no CUDA packages). Phase 3: processed, published, and searched a document, finding and fixing a parser memory-limit defect ([details](docs/architecture/vector-indexing.md#container-verification)). Phase 4: published a new document version, ran hybrid+rerank search, and cleaned up 2 obsolete indexes inside Compose |
+| Phase 4 migration and upgrade | `0002` upgrade/downgrade with no schema drift on PostgreSQL; 9 documents reindexed into the hybrid index version (1,307 points with BM25) in 58 s; activation refused until coverage was complete |
+| Sparse and hybrid safety | Tests cover publication, retries (identical BM25 vectors), outages, collection mismatch, tenant isolation and forged payloads in BM25 and hybrid modes, deletion and supersession, replenishment and capping, fusion over visible candidates only, and reranker pair limits |
+| Maintenance | Tests cover two-phase vector cleanup with an injected Qdrant failure and retry, active jobs skipped, scoped failed-job retry, and the reindex and activation coverage check |
+| Real reranker | Pinned cross-encoder: 512 window and single label verified; relevant passage scored higher; over-long pairs refused |
 
 Four skips were PostgreSQL-only checks under the SQLite parameterization; their PostgreSQL
 counterparts passed. The remaining skip was a Windows symlink test without OS permission.
-GitHub Actions and Python 3.12 have not been run; the CI workflow now also starts a Qdrant
-service container and installs CPU-only PyTorch, but that configuration is unverified.
-`scripts/fetch_corpus.py` and `scripts/evaluate_retrieval.py` were exercised by the runs
-above, not by unit tests.
+GitHub Actions and Python 3.12 have not been run; the CI workflow (PostgreSQL and Qdrant
+service containers, CPU-only PyTorch) is configured but unverified. `scripts/fetch_corpus.py`
+(through a mock HTTP transport) and `scripts/evaluate_retrieval.py` (through the integration
+harness) now have automated tests.
 
 ### Run the checks
 
@@ -349,7 +378,7 @@ use a disposable test database. Adapt the URL if you change the development cred
 | Configuration / IDs | pydantic-settings 2.16.1, uuid6 2025.0.1 |
 | Embeddings / vectors | torch 2.14.1+cpu, sentence-transformers 6.2.0, transformers 5.21.0, qdrant-client 1.18.0, httpx 0.28.1, numpy 2.5.4 |
 | Services | PostgreSQL 17.11, Qdrant 1.18.3 (Docker) |
-| Model | `sentence-transformers/all-MiniLM-L6-v2` @ `1110a243fdf4706b3f48f1d95db1a4f5529b4d41` |
+| Models | `sentence-transformers/all-MiniLM-L6-v2` @ `1110a243fdf4706b3f48f1d95db1a4f5529b4d41`; reranker `cross-encoder/ms-marco-MiniLM-L6-v2` @ `233902d25c440f23af6f7d6e94d2946bac0bee0a` |
 | Development | pytest 9.1.1, ruff 0.17.3, mypy 2.4.0 |
 
 An earlier single laptop run on the 80-page NIST SP 800-61r2 document produced 295 chunks:
@@ -362,10 +391,11 @@ withdrawn revision as current guidance.
 ## Repository map
 
 ```text
-rag/                         Framework-free parsing, chunking, embedding, Qdrant
-                             indexing, dense retrieval, and evaluation metrics
-apps/api/src/kip/            CLI, persistence, storage, worker, and scoped search
-apps/api/migrations/         Alembic environment and schema migration
+rag/                         Framework-free parsing, chunking, embedding, BM25, Qdrant
+                             indexing, retrieval, fusion, reranking, evaluation metrics
+apps/api/src/kip/            CLI, persistence, storage, worker, scoped search,
+                             maintenance, and the evaluation runner
+apps/api/migrations/         Alembic environment and schema migrations (0001, 0002)
 infrastructure/docker/      Worker container image (CPU-only PyTorch)
 scripts/                    Preview, corpus fetch (SHA-256 pinned), retrieval evaluation
 evals/                      Dataset manifests, questions, and recorded reports
@@ -387,6 +417,7 @@ future HTTP service; it currently contains the CLI and worker infrastructure.
 | [Database design](docs/architecture/database-design.md) | Target schema, tenant integrity, permissions, and Qdrant relationships |
 | [Ingestion persistence](docs/architecture/ingestion-persistence.md) | Working schema, storage, job recovery, CLI commands, and Compose setup |
 | [Vector indexing and search](docs/architecture/vector-indexing.md) | Embedding checks, Qdrant layout, publication, failure matrix, search re-check, limitations |
+| [Hybrid retrieval](docs/architecture/hybrid-retrieval.md) | BM25, upgrade path, search modes, RRF, reranking, maintenance commands, comparison, limitations |
 | [NIST evaluation dataset](evals/datasets/nist-security/README.md) | Corpus provenance and licence notes, labels, reproduction steps, baseline results |
 | [Repository architecture](docs/architecture/repository-architecture.md) | Module boundaries, layout, and dependency rules |
 | [Corpus strategy](docs/rag/corpus-strategy.md) | Candidate documents, provenance, licensing checks, and limitations |
@@ -400,8 +431,8 @@ future HTTP service; it currently contains the CLI and worker infrastructure.
 | 1 | Architecture and document-processing core | Implemented |
 | 2 | PostgreSQL, migrations, local storage, durable worker, CLI, and Compose | Implemented |
 | 3 | Embeddings, Qdrant indexing, dense retrieval, corpus, and first retrieval benchmark | Implemented |
-| 4 | BM25, reciprocal rank fusion, reranking, and comparisons | Next |
-| 5 | Generation, context selection, citations, and abstention | Planned |
+| 4 | BM25, reciprocal rank fusion, reranking, and comparisons | Implemented |
+| 5 | Generation, context selection, citations, and abstention | Next |
 | 6 | Knowledge-base management, conversations, authorization, and REST API | Planned |
 | 7 | Next.js dashboard | Planned |
 | 8 | Retrieval Explorer | Planned |
@@ -423,8 +454,11 @@ future HTTP service; it currently contains the CLI and worker infrastructure.
   sweeper remain future work. The storage directory must be private to the application
   OS account.
 - **Vectors:** Qdrant payloads hold identifiers and filter fields, never chunk text.
-  Deleted documents disappear from search immediately, but their vectors remain until a
-  cleanup job exists.
+  Deleted documents disappear from search immediately; `kip cleanup-vectors` removes
+  their vectors (operator-run, retryable). BM25 IDF is computed over the whole collection,
+  so tenants sharing an index version influence each other's BM25 scores (statistics only).
+- **Remaining work:** embedding reuse across versions and worker-image size reduction
+  (about 2.1 GB, mostly CPU PyTorch) are not implemented.
 - **Corpus handling:** the NIST manifest records URLs, hashes, publication status, the
   verified licence statement, and non-NIST co-authors. Documents are downloaded locally,
   never committed. Test fixtures are generated in memory by

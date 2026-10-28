@@ -11,6 +11,7 @@ from kip.settings import Settings
 from rag.embeddings import Embedder
 from rag.embeddings.sentence_transformer import SentenceTransformerEmbedder
 from rag.indexing import VectorIndex
+from rag.reranking import Reranker
 
 if TYPE_CHECKING:
     # qdrant_client is imported lazily: the parser subprocess re-imports this module graph.
@@ -64,4 +65,31 @@ class QdrantIndexFactory:
     def __call__(self, index: IndexVersion, model: EmbeddingModel) -> VectorIndex:
         from rag.indexing.qdrant import QdrantVectorIndex  # noqa: PLC0415 (lazy, see above)
 
-        return QdrantVectorIndex(self.client, index.qdrant_collection, model.dimension)
+        return QdrantVectorIndex(
+            self.client,
+            index.qdrant_collection,
+            model.dimension,
+            sparse=index.sparse_config is not None,
+        )
+
+
+class RerankerCache:
+    """Loads the configured, pinned cross-encoder once per process (only when used)."""
+
+    def __init__(self, settings: Settings) -> None:
+        self.settings = settings
+        self._reranker: Reranker | None = None
+        self._lock = Lock()
+
+    def __call__(self) -> Reranker:
+        from rag.reranking.cross_encoder import CrossEncoderReranker  # noqa: PLC0415
+
+        with self._lock:
+            if self._reranker is None:
+                self._reranker = CrossEncoderReranker(
+                    self.settings.rerank_model,
+                    self.settings.rerank_revision,
+                    expected_max_length=self.settings.rerank_max_length,
+                    device=self.settings.embed_device,
+                )
+            return self._reranker

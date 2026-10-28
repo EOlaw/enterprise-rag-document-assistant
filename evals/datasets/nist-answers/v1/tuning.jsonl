@@ -1,0 +1,10 @@
+{"id": "t01", "answerable": false, "question": "What is the capital of Australia?"}
+{"id": "t02", "answerable": false, "question": "How do I bake sourdough bread at home?"}
+{"id": "t03", "answerable": false, "question": "What is NIST's annual budget for 2026?"}
+{"id": "t04", "answerable": false, "question": "Which antivirus product does NIST endorse?"}
+{"id": "t05", "answerable": false, "question": "What penalties apply for failing a Cybersecurity Framework audit?"}
+{"id": "t06", "answerable": false, "question": "How many CVEs were published in 2024?"}
+{"id": "t07", "answerable": false, "question": "What is the default password policy in Microsoft Entra ID?"}
+{"id": "t08", "answerable": false, "question": "Which TCP port does HTTPS use by default?"}
+{"id": "t09", "answerable": false, "question": "How should GDPR data subject access requests be handled?"}
+{"id": "t10", "answerable": false, "question": "What availability SLA does AWS S3 offer?"}

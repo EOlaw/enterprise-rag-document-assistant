@@ -2,6 +2,7 @@ import os
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
@@ -11,7 +12,7 @@ from kip.cli import create_index
 from kip.db.models import Base, EmbeddingModel, IndexVersion, KnowledgeBase, Organization
 from kip.db.session import make_engine, session_factory
 from kip.ingestion import Submission, submit_document
-from kip.retrieval import SearchResult, dense_search
+from kip.retrieval import Mode, SearchResult, search
 from kip.settings import Settings
 from kip.storage import LocalObjectStore
 from kip.vectors import VectorIndexFactory
@@ -27,6 +28,7 @@ from rag.embeddings import Embedder
 from rag.indexing import VectorIndex
 from rag.indexing.qdrant import QdrantVectorIndex
 from rag.ingestion.pipeline import ProcessedDocument, process_document
+from rag.sparse import Bm25Config
 from tests.fakes import HashingEmbedder
 
 
@@ -116,13 +118,14 @@ class Harness:
         kb_id: UUID | None = None,
         document_id: UUID | None = None,
         filename: str = "guide.txt",
+        index_id: UUID | None = None,
     ) -> Submission:
         return submit_document(
             self.sessions,
             self.store,
             org_id=org_id or self.org.id,
             kb_id=kb_id or self.kb.id,
-            index_version_id=self.index_id,
+            index_version_id=index_id or self.index_id,
             filename=filename,
             data=data,
             document_id=document_id,
@@ -130,12 +133,15 @@ class Harness:
 
     def vectors(self, index: IndexVersion, model: EmbeddingModel) -> VectorIndex:
         return QdrantVectorIndex(
-            self.client, self.prefix + index.qdrant_collection, model.dimension
+            self.client,
+            self.prefix + index.qdrant_collection,
+            model.dimension,
+            sparse=index.sparse_config is not None,
         )
 
-    def collection(self) -> str:
+    def collection(self, index_id: UUID | None = None) -> str:
         with self.sessions() as session:
-            index = session.get(IndexVersion, self.index_id)
+            index = session.get(IndexVersion, index_id or self.index_id)
             assert index is not None
             return self.prefix + index.qdrant_collection
 
@@ -162,8 +168,11 @@ class Harness:
         org_id: UUID | None = None,
         kb_ids: list[UUID] | None = None,
         top_k: int = 5,
+        mode: Mode = "dense",
+        index_id: UUID | None = None,
+        **options: Any,
     ) -> SearchResult:
-        return dense_search(
+        return search(
             self.sessions,
             lambda _: self.embedder,
             self.vectors,
@@ -171,8 +180,23 @@ class Harness:
             kb_ids=kb_ids or [self.kb.id],
             query=query,
             top_k=top_k,
-            index_version_id=self.index_id,
+            mode=mode,
+            index_version_id=index_id or self.index_id,
+            **options,
         )
+
+    def hybrid_index(self, *, chunking: ChunkingConfig | None = None) -> UUID:
+        """Create a BM25 + dense index version with the harness model."""
+        with self.sessions.begin() as session:
+            return create_index(
+                session,
+                model_name="regex-v1",
+                revision="test-v1",
+                dimension=384,
+                max_seq_tokens=256,
+                chunking=chunking or ChunkingConfig(),
+                sparse=Bm25Config(),
+            ).id
 
     def add_tenant(self, slug: str) -> tuple[UUID, UUID]:
         with self.sessions.begin() as session:

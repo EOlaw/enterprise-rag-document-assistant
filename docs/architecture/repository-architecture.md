@@ -13,7 +13,9 @@ enterprise-rag-intelligence/
 │   ├── chunking/             ✅ token counters, sentence splitter, chunking strategies
 │   ├── embeddings/           ✅ Embedder protocol, pinned MiniLM loader, vector/token validation
 │   ├── indexing/             ✅ Qdrant collection checks, payload indexes, upsert/publish/delete/search
-│   ├── retrieval/            ✅ dense.py; Phase 4: sparse.py (BM25), hybrid.py (RRF), reranker.py
+│   ├── sparse/               ✅ BM25 tokenizer and term weighting (pure Python)
+│   ├── reranking/            ✅ pinned cross-encoder with pair-length checks (lazy torch)
+│   ├── retrieval/            ✅ dense.py, sparse.py, fusion.py (RRF)
 │   ├── query/                Phase 4  normalization, identifier extraction, routing
 │   ├── context/              Phase 5  evidence sufficiency, token-budgeted selection
 │   ├── generation/           Phase 5  LLMProvider protocol, Ollama provider, prompt templates
@@ -21,8 +23,8 @@ enterprise-rag-intelligence/
 │   └── evaluation/           ✅ quote-span labels, retrieval metrics, bootstrap CIs; lab UI Phase 9
 ├── apps/
 │   ├── api/                  ✅ Phase 2 infrastructure (package `kip`); HTTP/auth in Phase 6
-│   │   ├── src/kip/          ✅ cli.py, ingestion.py, retrieval.py, vectors.py, settings.py, worker/, db/, storage/
-│   │   └── migrations/       ✅ Alembic environment and frozen initial migration
+│   │   ├── src/kip/          ✅ cli.py, ingestion.py, retrieval.py, maintenance.py, evaluation.py, vectors.py, settings.py, worker/, db/, storage/
+│   │   └── migrations/       ✅ Alembic environment; 0001 ingestion, 0002 hybrid retrieval
 │   └── web/                  Phase 7  Next.js + TypeScript dashboard
 ├── packages/contracts/       Phase 7  TS types generated from the FastAPI OpenAPI schema
 ├── infrastructure/docker/    ✅ worker image; monitoring/ and aws/ remain future work

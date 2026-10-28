@@ -23,8 +23,8 @@ _INVISIBLE = dict.fromkeys(map(ord, "\u200b\u200c\u200d\u2060\ufeff\u00ad"), Non
 _CONTROL_CHARS = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
 _HORIZONTAL_SPACE = re.compile(r"[ \t\u00a0\u2000-\u200a\u202f\u205f\u3000]+")
 # Symbol/Wingdings fonts emit Private Use Area code points (e.g. U+F03C, U+F0B7) as bullets.
-_PUA_BULLET = re.compile(r"^[-](?=\s)", re.MULTILINE)
-_PUA = re.compile(r"[-]")
+_PUA_BULLET = re.compile(r"^[\ue000-\uf8ff](?=\s)", re.MULTILINE)
+_PUA = re.compile(r"[\ue000-\uf8ff]")
 _LIST_MARKER = re.compile(
     r"^(?:[-*+\u2022\u25aa\u25e6\u2023\u2013]|\(?\d{1,3}[.)]|\(?[a-z][.)])\s+"
 )
@@ -39,7 +39,7 @@ def clean_text(text: str) -> str:
     text = text.replace("\r\n", "\n").replace("\r", "\n")
     text = text.translate(_INVISIBLE)
     text = _CONTROL_CHARS.sub(" ", text)
-    text = _PUA.sub("", _PUA_BULLET.sub("•", text))
+    text = _PUA.sub("", _PUA_BULLET.sub("\u2022", text))
     lines = (_HORIZONTAL_SPACE.sub(" ", line).strip() for line in text.split("\n"))
     return "\n".join(lines).strip("\n")
 

@@ -4,6 +4,7 @@ the integration suite when TEST_QDRANT_URL is set)."""
 from __future__ import annotations
 
 from collections.abc import Iterator
+from dataclasses import replace
 from uuid import UUID, uuid4
 
 import pytest
@@ -15,6 +16,7 @@ from rag.indexing import (
     VectorStoreUnavailableError,
 )
 from rag.indexing.qdrant import QdrantVectorIndex
+from rag.sparse import Bm25Config, encode_document, encode_query
 from tests.fakes import HashingEmbedder
 
 ORG, OTHER_ORG = uuid4(), uuid4()
@@ -118,3 +120,62 @@ def test_unreachable_server_is_a_retryable_error() -> None:
     with pytest.raises(VectorStoreUnavailableError) as error:
         QdrantVectorIndex(client, "chunks", 64).ensure_collection()
     assert error.value.retryable and error.value.code == "vector_store_unavailable"
+
+
+# ------------------------------------------------------------------- BM25 sparse
+
+
+def sparse_points(
+    document_index_id: UUID, texts: list[str], *, org: UUID = ORG
+) -> list[ChunkPoint]:
+    return [
+        replace(point, sparse=encode_document(text, Bm25Config()))
+        for point, text in zip(points(document_index_id, texts, org=org), texts, strict=True)
+    ]
+
+
+@pytest.fixture
+def hybrid() -> Iterator[QdrantVectorIndex]:
+    client = QdrantClient(location=":memory:")
+    vectors = QdrantVectorIndex(client, "hybrid", 64, sparse=True)
+    vectors.ensure_collection()
+    yield vectors
+    client.close()
+
+
+def test_sparse_search_finds_identifiers_within_scope(hybrid: QdrantVectorIndex) -> None:
+    mine, theirs = uuid4(), uuid4()
+    hybrid.upsert(sparse_points(mine, ["Control RC.RP-01 recovery", "budget forecast"]))
+    hybrid.upsert(sparse_points(theirs, ["Control RC.RP-01 recovery"], org=OTHER_ORG))
+    for doc in (mine, theirs):
+        hybrid.set_published(doc, True)
+    hits = hybrid.search_sparse(encode_query("RC.RP-01"), org_id=ORG, kb_ids=[KB], limit=10)
+    assert len(hits) == 1 and hits[0].score > 0
+    assert hybrid.search_sparse(encode_query("the of"), org_id=ORG, kb_ids=[KB], limit=5) == []
+
+
+def test_sparse_terms_must_match_the_index_kind(
+    hybrid: QdrantVectorIndex, index: QdrantVectorIndex
+) -> None:
+    with pytest.raises(ValueError, match="sparse terms"):
+        hybrid.upsert(points(uuid4(), ["no sparse terms"]))
+    with pytest.raises(ValueError, match="sparse terms"):
+        index.upsert(sparse_points(uuid4(), ["unexpected sparse terms"]))
+    with pytest.raises(VectorCollectionMismatchError):
+        index.search_sparse(encode_query("x"), org_id=ORG, kb_ids=[KB], limit=5)
+
+
+def test_sparse_and_dense_collections_are_not_interchangeable() -> None:
+    client = QdrantClient(location=":memory:")
+    QdrantVectorIndex(client, "dense_only", 64).ensure_collection()
+    with pytest.raises(VectorCollectionMismatchError, match="IDF"):
+        QdrantVectorIndex(client, "dense_only", 64, sparse=True).ensure_collection()
+    QdrantVectorIndex(client, "both", 64, sparse=True).ensure_collection()
+    with pytest.raises(VectorCollectionMismatchError, match="sparse vector"):
+        QdrantVectorIndex(client, "both", 64).ensure_collection()
+
+
+def test_delete_and_count_tolerate_a_missing_collection() -> None:
+    vectors = QdrantVectorIndex(QdrantClient(location=":memory:"), "never_created", 64)
+    vectors.delete_document_index(uuid4())
+    assert vectors.count(uuid4()) == 0

@@ -1,0 +1,35 @@
+{
+  "description": "Publication authority metadata applied to the evaluation tenant before answer evaluation. Status as recorded on 2026-10-27 from each PDF. Where a PDF gives only a month, published_on uses the first day of that month and the note says so.",
+  "documents": {
+    "sp800-61r2": {
+      "status": "withdrawn",
+      "published_on": "2012-08-01",
+      "superseded_by": "sp800-61r3",
+      "note": "Published August 2012 (day not stated). Withdrawn 2025-04-03 and superseded in its entirety by SP 800-61r3, per the notice on page 1 of the PDF."
+    },
+    "sp800-61r3": {
+      "status": "current",
+      "published_on": "2025-04-03",
+      "note": "Publication date stated in the SP 800-61r2 withdrawal notice."
+    },
+    "csf-1.1": {
+      "status": "superseded",
+      "published_on": "2018-04-16",
+      "superseded_by": "csf-2.0",
+      "note": "Later version: CSF 2.0 (2024-02-26). The 1.1 PDF carries no withdrawal notice, so it is recorded as superseded, not withdrawn."
+    },
+    "csf-2.0": {
+      "status": "current",
+      "published_on": "2024-02-26"
+    },
+    "sp800-63b-4": {
+      "status": "current",
+      "published_on": "2025-07-01",
+      "note": "Published July 2025 (day not stated)."
+    },
+    "injection-note": {
+      "status": "unknown",
+      "note": "Synthetic prompt-injection test document; deliberately left unknown and undated."
+    }
+  }
+}

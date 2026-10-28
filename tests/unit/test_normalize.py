@@ -11,9 +11,12 @@ def test_clean_text_folds_pdf_artifacts() -> None:
 
 def test_private_use_bullet_glyphs_become_bullets_and_stray_glyphs_are_dropped() -> None:
     # Observed in NIST SP 800-61r2: Symbol-font bullets extracted as U+F03C.
-    raw = "services a team might offer:\n Intrusion Detection. text\n Advisories."
+    raw = "services a team might offer:\n\uf03c Intrusion Detection. text\n\uf0b7 Advisories\ue000."
     cleaned = clean_text(raw)
-    assert cleaned == "services a team might offer:\n• Intrusion Detection. text\n• Advisories."
+    assert (
+        cleaned
+        == "services a team might offer:\n\u2022 Intrusion Detection. text\n\u2022 Advisories."
+    )
     assert join_wrapped_lines(cleaned).count("\n") == 2  # each bullet keeps its own line
 
 

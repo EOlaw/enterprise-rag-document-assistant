@@ -85,7 +85,12 @@ One collection **per index version** (`kip_chunks__<index_fingerprint>`), multi-
 * Per-tenant HNSW (`m=0, payload_m=16`) is an option once tenants are large; not
   adopted until measured.
 
-## 5. Sparse retrieval: BM25 inside Qdrant 🧪
+## 5. Sparse retrieval: BM25 inside Qdrant ✅ (Phase 4)
+
+> Implemented as designed with these specifics: `avgdl=74` (measured on this repository's
+> docs, not the evaluation corpus), stop-word list of 75 words, no stemming, no collision
+> reporting yet. Qdrant's IDF is collection-wide, so tenants share BM25 statistics. See
+> [hybrid retrieval](../architecture/hybrid-retrieval.md).
 
 No separate search engine (avoids duplicate infrastructure and duplicate ACL logic).
 
@@ -99,7 +104,13 @@ No separate search engine (avoids duplicate infrastructure and duplicate ACL log
 * Term → index: first 4 bytes of BLAKE2b (stable across processes; Python's `hash()` is
   salted). Collision rate is reported in index stats.
 
-## 6. Hybrid fusion and reranking 🧪
+## 6. Hybrid fusion and reranking ✅ (Phase 4, except query routing)
+
+> Implemented: client-side RRF (k=60, equal weights) over **re-checked** lists of 50
+> visible candidates per retriever, and optional reranking of the top 30 with the pinned
+> cross-encoder. Pairs over 512 tokens are refused. Not implemented: the k sweep, the
+> reranker-depth sweep, and identifier-aware query routing. Measured results are in the
+> hybrid retrieval guide.
 
 * Dense top-50 and sparse top-50 retrieved with identical filters, fused **client-side**
   with Reciprocal Rank Fusion, `score = Σ 1/(k + rank)`, `k=60` (sweep 10–100). Client-side

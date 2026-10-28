@@ -5,13 +5,15 @@ indexes cannot satisfy the retrieval gate, which requires a ready index and curr
 Identity, grants and conversations will be added with the authenticated API in Phase 6.
 """
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Any
 from uuid import UUID
 
 from sqlalchemy import (
     JSON,
+    Boolean,
     CheckConstraint,
+    Date,
     DateTime,
     ForeignKey,
     ForeignKeyConstraint,
@@ -79,12 +81,31 @@ class Document(Row, Base):
             deferrable=True,
             initially="DEFERRED",
         ),
+        # Publication authority (Phase 5): a *different* document can replace this one.
+        ForeignKeyConstraint(
+            ["superseded_by_document_id", "org_id"],
+            ["documents.id", "documents.org_id"],
+            name="fk_documents_superseded_by",
+        ),
+        CheckConstraint(
+            "publication_status IN ('current','superseded','withdrawn','unknown')",
+            name="publication_status",
+        ),
+        CheckConstraint("superseded_by_document_id <> id", name="not_self_superseded"),
     )
     org_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"))
     kb_id: Mapped[UUID] = mapped_column(Uuid, index=True)
     title: Mapped[str] = mapped_column(Text)
     current_version_id: Mapped[UUID | None] = mapped_column(Uuid)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Not the same as document_versions.status='superseded' (versions of THIS document).
+    publication_status: Mapped[str] = mapped_column(
+        String(20), default="unknown", server_default="unknown"
+    )
+    published_on: Mapped[date | None] = mapped_column(Date)  # NULL = undated
+    superseded_by_document_id: Mapped[UUID | None] = mapped_column(Uuid)
+    publication_note: Mapped[str | None] = mapped_column(String(500))
+    publication_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class DocumentVersion(Row, Base):
@@ -151,6 +172,10 @@ class IndexVersion(Row, Base):
         JSON().with_variant(JSONB, "postgresql")
     )
     chunking_fingerprint: Mapped[str] = mapped_column(String(16))
+    # BM25 parameters (rag.sparse.Bm25Config); NULL means a dense-only index version.
+    sparse_config: Mapped[dict[str, Any] | None] = mapped_column(
+        JSON().with_variant(JSONB, "postgresql")
+    )
     fingerprint: Mapped[str] = mapped_column(String(64), unique=True)
     qdrant_collection: Mapped[str] = mapped_column(String(100))
     status: Mapped[str] = mapped_column(String(20), default="building")
@@ -164,7 +189,10 @@ class DocumentIndex(Row, Base):
         ForeignKeyConstraint(
             ["document_version_id", "org_id"], ["document_versions.id", "document_versions.org_id"]
         ),
-        CheckConstraint("status IN ('building','ready','failed','deleting')", name="status"),
+        # deleting -> deleted: vectors of an obsolete index are being / have been removed.
+        CheckConstraint(
+            "status IN ('building','ready','failed','deleting','deleted')", name="status"
+        ),
         CheckConstraint("chunk_count >= 0", name="chunk_count"),
     )
     org_id: Mapped[UUID] = mapped_column(Uuid)
@@ -254,3 +282,27 @@ class IngestionJob(Row, Base):
     lease_token: Mapped[UUID | None] = mapped_column(Uuid)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class AnswerRun(Row, Base):
+    """Reproducibility trace of one grounded-answer request.
+
+    Stores identifiers, configuration, scores, statuses and the generated answer. It does
+    not store prompts or document text: the prompt is rebuilt from ``PROMPT_VERSION``,
+    the question and the evidence chunk IDs. The question is stored unless disabled.
+    """
+
+    __tablename__ = "answer_runs"
+    __table_args__ = (Index("ix_answer_runs_org_created", "org_id", "created_at"),)
+    org_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"))
+    index_version_id: Mapped[UUID] = mapped_column(ForeignKey("index_versions.id"))
+    kb_ids: Mapped[list[str]] = mapped_column(JSON().with_variant(JSONB, "postgresql"))
+    question: Mapped[str | None] = mapped_column(Text)
+    question_sha256: Mapped[str] = mapped_column(String(64))
+    mode: Mapped[str] = mapped_column(String(10))
+    reranked: Mapped[bool] = mapped_column(Boolean)
+    grounding: Mapped[str] = mapped_column(String(30))
+    abstain_reason: Mapped[str | None] = mapped_column(String(500))
+    answer: Mapped[str | None] = mapped_column(Text)
+    error_code: Mapped[str | None] = mapped_column(String(100))
+    trace: Mapped[dict[str, Any]] = mapped_column(JSON().with_variant(JSONB, "postgresql"))

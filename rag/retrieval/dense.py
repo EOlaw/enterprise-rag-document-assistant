@@ -27,18 +27,41 @@ class VectorSearcher(Protocol):
 
 
 @dataclass(frozen=True, slots=True)
-class DenseCandidate:
+class Candidate:
     point_id: UUID
-    score: float
+    score: float  # retriever-specific scale; compare only within one list
     rank: int  # 1-based
+
+
+DenseCandidate = Candidate  # Phase 3 name
 
 
 @dataclass(frozen=True, slots=True)
 class DenseCandidates:
-    candidates: list[DenseCandidate]
+    candidates: list[Candidate]
     query_tokens: int
     embed_ms: float
     search_ms: float
+
+
+def embed_query_checked(query: str, embedder: Embedder) -> tuple[list[float], int]:
+    """Normalize, length-check and embed a query. Returns (vector, token count)."""
+    query = " ".join(query.split())
+    if not query:
+        raise ValueError("query is empty")
+    [tokens] = embedder.count_tokens([query])
+    if tokens > embedder.max_input_tokens:
+        # Refuse rather than let the model silently embed a truncated query.
+        raise QueryTooLongError(
+            f"query has {tokens} tokens; the embedding model accepts {embedder.max_input_tokens}"
+        )
+    vector = embedder.embed_query(query)
+    validate_vectors([vector], count=1, dimension=embedder.dimension)
+    return vector, tokens
+
+
+def to_candidates(hits: Sequence[VectorHit]) -> list[Candidate]:
+    return [Candidate(hit.id, hit.score, rank) for rank, hit in enumerate(hits, 1)]
 
 
 def dense_candidates(
@@ -50,25 +73,17 @@ def dense_candidates(
     kb_ids: Sequence[UUID],
     limit: int,
 ) -> DenseCandidates:
-    query = " ".join(query.split())
-    if not query:
+    if not " ".join(query.split()):
         raise ValueError("query is empty")
     if not kb_ids:
         raise ValueError("at least one knowledge base is required")
-    [tokens] = embedder.count_tokens([query])
-    if tokens > embedder.max_input_tokens:
-        # Refuse rather than let the model silently embed a truncated query.
-        raise QueryTooLongError(
-            f"query has {tokens} tokens; the embedding model accepts {embedder.max_input_tokens}"
-        )
     started = time.perf_counter()
-    vector = embedder.embed_query(query)
-    validate_vectors([vector], count=1, dimension=embedder.dimension)
+    vector, tokens = embed_query_checked(query, embedder)
     embedded = time.perf_counter()
     hits = searcher.search(vector, org_id=org_id, kb_ids=kb_ids, limit=limit)
     searched = time.perf_counter()
     return DenseCandidates(
-        candidates=[DenseCandidate(hit.id, hit.score, rank) for rank, hit in enumerate(hits, 1)],
+        candidates=to_candidates(hits),
         query_tokens=tokens,
         embed_ms=(embedded - started) * 1000,
         search_ms=(searched - embedded) * 1000,

@@ -196,6 +196,8 @@ class QdrantVectorIndex:
         )
 
     def delete_document_index(self, document_index_id: UUID) -> None:
+        if not self._exists():
+            return  # nothing was ever written to this index version
         self._call(
             lambda: self.client.delete(
                 self.collection,
@@ -209,6 +211,8 @@ class QdrantVectorIndex:
     # ----------------------------------------------------------------------- reads
 
     def count(self, document_index_id: UUID, *, published: bool | None = None) -> int:
+        if not self._exists():
+            return 0
         conditions: list[models.Condition] = [_match("document_index_id", document_index_id)]
         if published is not None:
             conditions.append(
@@ -256,7 +260,7 @@ class QdrantVectorIndex:
             raise ValueError("search requires at least one knowledge base")
         if limit <= 0:
             raise ValueError("limit must be positive")
-        if not self._call(lambda: self.client.collection_exists(self.collection)):
+        if not self._exists():
             return None  # nothing has been published to this index version yet
         return models.Filter(
             must=[
@@ -283,6 +287,9 @@ class QdrantVectorIndex:
             )
         )
         return [VectorHit(UUID(str(point.id)), float(point.score)) for point in response.points]
+
+    def _exists(self) -> bool:
+        return bool(self._call(lambda: self.client.collection_exists(self.collection)))
 
     def _call(self, operation: Any) -> Any:
         try:

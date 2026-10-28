@@ -55,6 +55,7 @@ from rag.indexing import ChunkPoint, VectorCountMismatchError, VectorStoreError
 from rag.ingestion.identity import chunk_point_id, sha256_hex
 from rag.ingestion.pipeline import ProcessedDocument
 from rag.parsing import PARSER_VERSION
+from rag.sparse import Bm25Config, encode_document
 
 logger = logging.getLogger(__name__)
 T = TypeVar("T")
@@ -371,6 +372,7 @@ class Worker:
             dimension=work.model.dimension,
             max_seq_length=work.model.max_seq_tokens,
         )
+        bm25 = _sparse_config(work.index)
         vectors = self.vector_index_factory(work.index, work.model)
         self._with_pulse(lease, vectors.ensure_collection)
 
@@ -400,6 +402,8 @@ class Worker:
                         document_version_id=row.document_version_id,
                         document_index_id=document_index_id,
                         chunk_index=row.chunk_index,
+                        # BM25 weights are deterministic, so retries rewrite identical terms.
+                        sparse=encode_document(row.embedding_text, bm25) if bm25 else None,
                     )
                     for row, vector in zip(batch, embedded, strict=True)
                 ]
@@ -488,6 +492,15 @@ class Worker:
                 hidden.append(document_index.id)
             _complete(job, "published")
             return hidden
+
+
+def _sparse_config(index: IndexVersion) -> Bm25Config | None:
+    if index.sparse_config is None:
+        return None
+    try:
+        return Bm25Config.model_validate(index.sparse_config)
+    except ValueError as exc:  # pydantic ValidationError: corrupt or unknown metadata
+        raise ConfigurationError("index version has an invalid sparse_config") from exc
 
 
 def _complete(job: IngestionJob, stage: str) -> None:

@@ -24,6 +24,18 @@ services:
     volumes:
       - qdrant_data:/qdrant/storage
 
+  ollama:
+    # Local LLM for grounded answers (Phase 5). Optional: `docker compose --profile llm up -d`.
+    profiles: [llm]
+    image: ollama/ollama:0.40.3
+    ports:
+      - "127.0.0.1:${OLLAMA_PORT:-11434}:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      OLLAMA_NUM_PARALLEL: "1"
+      OLLAMA_KEEP_ALIVE: "30m"
+
   migrate:
     profiles: [worker]
     build:
@@ -64,3 +76,4 @@ services:
 volumes:
   postgres_data:
   qdrant_data:
+  ollama_data:

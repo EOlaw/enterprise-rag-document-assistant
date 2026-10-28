@@ -29,23 +29,24 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
-def fetch(url: str, target: Path) -> None:
+def fetch(url: str, target: Path, client: httpx.Client) -> None:
     target.parent.mkdir(parents=True, exist_ok=True)
-    with (
-        httpx.stream("GET", url, follow_redirects=True, timeout=60) as response,
-        tempfile.NamedTemporaryFile(dir=target.parent, delete=False, suffix=".part") as scratch,
-    ):
-        response.raise_for_status()
-        size = 0
-        for block in response.iter_bytes():
-            size += len(block)
-            if size > MAX_BYTES:
-                raise ValueError(f"{url} exceeds {MAX_BYTES} bytes")
-            scratch.write(block)
-    Path(scratch.name).replace(target)
+    scratch = tempfile.NamedTemporaryFile(dir=target.parent, delete=False, suffix=".part")  # noqa: SIM115
+    try:
+        with scratch, client.stream("GET", url, follow_redirects=True, timeout=60) as response:
+            response.raise_for_status()
+            size = 0
+            for block in response.iter_bytes():
+                size += len(block)
+                if size > MAX_BYTES:
+                    raise ValueError(f"{url} exceeds {MAX_BYTES} bytes")
+                scratch.write(block)
+        Path(scratch.name).replace(target)
+    finally:
+        Path(scratch.name).unlink(missing_ok=True)  # no partial file survives a failure
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv: list[str] | None = None, client: httpx.Client | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("manifest", type=Path)
     parser.add_argument("--dest", type=Path, default=Path("data/corpus"))
@@ -53,10 +54,11 @@ def main(argv: list[str] | None = None) -> int:
     manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
     folder = args.dest / manifest["name"]
     failures = 0
+    http = client or httpx.Client()
     for document in manifest["documents"]:
         target = folder / document["file"]
         if not target.exists():
-            fetch(document["url"], target)
+            fetch(document["url"], target, http)
         actual = sha256_file(target)
         status = "ok" if actual == document["sha256"] else "SHA256 MISMATCH"
         failures += status != "ok"
