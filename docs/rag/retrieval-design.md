@@ -124,7 +124,15 @@ No separate search engine (avoids duplicate infrastructure and duplicate ACL log
   appear verbatim in the rewritten query (a guard rejects rewrites that drop or alter
   identifiers).
 
-## 7. Evidence sufficiency and context selection 🧪
+## 7. Evidence sufficiency and context selection ✅ (Phase 5, simplified)
+
+> Implemented: greedy selection in retrieval order after the publication-authority
+> policy, duplicate removal (≥ 50% overlap within one version), a per-document cap, and a
+> strict token budget (blocks are skipped, never truncated). Sufficiency uses the top
+> rerank logit (or query-term coverage without reranking), with thresholds calibrated on a
+> tuning set. Not implemented: Jaccard de-duplication across versions, merging adjacent
+> chunks, freshness weighting beyond the authority policy. See
+> [grounded answers](../architecture/grounded-answers.md).
 
 * Reranker logits are **not probabilities**. Abstention threshold `τ` is chosen on the dev
   split to hit a target precision for answerable/unanswerable classification, and
@@ -134,7 +142,11 @@ No separate search engine (avoids duplicate infrastructure and duplicate ACL log
   Jaccard ≥ 0.8), per-document cap, merging of adjacent chunks from the same document,
   and preservation of conflicting versions (both cited, with dates).
 
-## 8. Citation metadata strategy ✅ (data) / 🧪 (verification)
+## 8. Citation metadata strategy ✅ (Phase 5; support check is lexical)
+
+> Implemented: `[S#]` labels, server-side label mapping, rejection and counting of unknown
+> labels, citation records with document, version, chunk, pages, offsets and publication
+> status. The support check is a lexical-plus-number heuristic, not an NLI or LLM judge.
 
 Each chunk carries `document_id, document_version_id, chunk_index, char_start, char_end,
 page_start, page_end, heading_path, content_hash` (char offsets into canonical text are

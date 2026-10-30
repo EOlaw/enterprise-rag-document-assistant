@@ -276,6 +276,11 @@ def answer(
                 abstain_reason = (parsed.abstain_reason or "model reported insufficient sources")[
                     :500
                 ]
+            elif not any(s.text.strip() for s in parsed.sentences):
+                # Observed with llama3.2:3b: {"abstain": false, "sentences": []}. No claim is
+                # made, so this is a non-answer; the inconsistent flag is recorded.
+                grounding = Grounding.ABSTAINED_MODEL
+                abstain_reason = "model returned no answer sentences (abstain flag not set)"
             else:
                 validation = validate_claims(
                     [(s.text, s.citations) for s in parsed.sentences], selection.evidence

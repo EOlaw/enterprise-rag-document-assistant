@@ -121,6 +121,19 @@ def test_model_abstention_is_reported(hybrid: Harness) -> None:
     )
 
 
+def test_empty_answer_without_abstain_flag_counts_as_model_abstention(hybrid: Harness) -> None:
+    publish(hybrid, BACKUP)
+    for raw in (
+        '{"abstain": false, "sentences": []}',
+        '{"abstain": false, "abstain_reason": "S2"}',
+    ):
+        result = ask(
+            hybrid, "How long are backup snapshots kept?", ScriptedProvider(lambda m, r=raw: r)
+        )
+        assert (result.grounding, result.answer) == ("abstained_model", None)
+        assert result.abstain_reason == "model returned no answer sentences (abstain flag not set)"
+
+
 def test_unknown_citations_are_rejected_and_unsupported_text_withheld(hybrid: Harness) -> None:
     publish(hybrid, BACKUP)
     provider = ScriptedProvider(

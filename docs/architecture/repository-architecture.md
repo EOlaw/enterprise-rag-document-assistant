@@ -17,14 +17,13 @@ enterprise-rag-intelligence/
 │   ├── reranking/            ✅ pinned cross-encoder with pair-length checks (lazy torch)
 │   ├── retrieval/            ✅ dense.py, sparse.py, fusion.py (RRF)
 │   ├── query/                Phase 4  normalization, identifier extraction, routing
-│   ├── context/              Phase 5  evidence sufficiency, token-budgeted selection
-│   ├── generation/           Phase 5  LLMProvider protocol, Ollama provider, prompt templates
-│   ├── citations/            Phase 5  label mapping, validity, support checks
+│   ├── answering/            ✅ authority policy, budgeted evidence selection, sufficiency, citation validation
+│   ├── generation/           ✅ LLMProvider protocol, Ollama provider, versioned prompt, JSON answer schema
 │   └── evaluation/           ✅ quote-span labels, retrieval metrics, bootstrap CIs; lab UI Phase 9
 ├── apps/
 │   ├── api/                  ✅ Phase 2 infrastructure (package `kip`); HTTP/auth in Phase 6
-│   │   ├── src/kip/          ✅ cli.py, ingestion.py, retrieval.py, maintenance.py, evaluation.py, vectors.py, settings.py, worker/, db/, storage/
-│   │   └── migrations/       ✅ Alembic environment; 0001 ingestion, 0002 hybrid retrieval
+│   │   ├── src/kip/          ✅ cli.py, ingestion.py, retrieval.py, maintenance.py, evaluation.py, answering.py, answer_evaluation.py, publications.py, llm.py, vectors.py, settings.py, worker/, db/, storage/
+│   │   └── migrations/       ✅ Alembic environment; 0001 ingestion, 0002 hybrid retrieval, 0003 grounded answers
 │   └── web/                  Phase 7  Next.js + TypeScript dashboard
 ├── packages/contracts/       Phase 7  TS types generated from the FastAPI OpenAPI schema
 ├── infrastructure/docker/    ✅ worker image; monitoring/ and aws/ remain future work

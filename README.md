@@ -4,11 +4,12 @@
 
 **From source documents to traceable evidence.**
 
-A foundation for enterprise RAG: document processing, durable ingestion, and
-tenant-scoped dense, BM25, and hybrid search with optional reranking. Results carry exact
-citation positions. Grounded answers are on the roadmap.
+A foundation for enterprise RAG: document processing, durable ingestion, tenant-scoped
+dense, BM25, and hybrid search with optional reranking, and grounded answers whose
+citations map to exact document, version, page, and character positions. Answers can
+abstain, and their evidence follows an explicit publication-authority policy.
 
-[![Development stage: Phase 4 implemented](https://img.shields.io/badge/stage-phase_4_implemented-0F766E?style=flat-square)](#implementation-status)
+[![Development stage: Phase 5 implemented](https://img.shields.io/badge/stage-phase_5_implemented-0F766E?style=flat-square)](#implementation-status)
 [![Python: 3.12 and later](https://img.shields.io/badge/python-3.12%2B-2563EB?style=flat-square&logo=python&logoColor=white)](#quick-start)
 [![License: MIT](https://img.shields.io/badge/license-MIT-475569?style=flat-square)](LICENSE)
 
@@ -17,6 +18,7 @@ citation positions. Grounded answers are on the roadmap.
 <a href="docs/architecture/ingestion-persistence.md"><img alt="Worker guide" src="https://img.shields.io/badge/Worker_guide-475569?style=for-the-badge"></a>
 <a href="docs/architecture/vector-indexing.md"><img alt="Indexing and search guide" src="https://img.shields.io/badge/Indexing_%26_search-475569?style=for-the-badge"></a>
 <a href="docs/architecture/hybrid-retrieval.md"><img alt="Hybrid retrieval guide" src="https://img.shields.io/badge/Hybrid_%26_reranking-475569?style=for-the-badge"></a>
+<a href="docs/architecture/grounded-answers.md"><img alt="Grounded answers guide" src="https://img.shields.io/badge/Grounded_answers-475569?style=for-the-badge"></a>
 <a href="#roadmap"><img alt="View roadmap" src="https://img.shields.io/badge/Roadmap-92400E?style=for-the-badge"></a>
 
 </div>
@@ -25,9 +27,12 @@ citation positions. Grounded answers are on the roadmap.
 > **Working today:** processing, PostgreSQL persistence, a durable background worker,
 > pinned MiniLM embeddings, and Qdrant indexing (dense + BM25) with PostgreSQL-gated
 > publication. Search runs in dense, BM25, or hybrid (RRF) mode, with optional pinned
-> cross-encoder reranking, and has a measured four-way comparison. Vector cleanup,
-> candidate replenishment, and failed-job retry are available. **Not implemented:** answer
-> generation, authentication and permissions, the public API, and the dashboard.
+> cross-encoder reranking, and has a measured four-way comparison. `kip ask` produces
+> grounded answers with a local Ollama model: citations validated against the evidence,
+> two-stage abstention, and an authority policy for withdrawn and superseded publications.
+> Answers have a measured held-out evaluation and text-free traces. **Not implemented:**
+> authentication and permissions, the public API, streaming and conversations, and the
+> dashboard.
 
 ## Implementation status
 
@@ -46,11 +51,14 @@ citation positions. Grounded answers are on the roadmap.
 | Operations | Index-version upgrade (`reindex`, coverage-checked activation), retryable vector cleanup, failed-job retry | Implemented |
 | Evaluation | Pinned public NIST corpus, 38 quote-labelled questions, four-way comparison with paired bootstrap differences, older-publication and TOC diagnostics | Implemented |
 | Developer tools | Preview CLI, ingestion, search, and maintenance CLI, worker image, and Docker Compose | Implemented |
-| Answers | Context selection, grounded generation, citation verification, and abstention | Planned |
+| Publication authority | `current` / `superseded` / `withdrawn` / `unknown`, publication date (or undated), replacement document; configurable include / demote / exclude policy, visible in output and citations | Implemented |
+| Grounded answers | `LLMProvider` protocol with pinned Ollama; strict token-budgeted evidence; JSON-schema output; label-only citations with document/version/chunk/page/offsets | Implemented |
+| Citation validation | Unknown labels rejected and counted; supported / partial / unsupported / unchecked per sentence (lexical heuristic); ungrounded answers withheld | Implemented |
+| Abstention and traces | Retrieval-only sufficiency (calibrated on a tuning set) plus model abstention; `answer_runs` traces without prompts or document text | Implemented |
 | User experience | Authentication, authorization, REST API, dashboard, and evaluation UI | Planned |
 
-Retrieval quality has been measured for four configurations (see [Evaluation](#evaluation)).
-No answer-quality metrics exist, because nothing generates answers yet.
+Retrieval quality has been measured for four configurations, and answer quality on a small
+held-out set under three authority policies (see [Evaluation](#evaluation)).
 
 ## How it works
 
@@ -143,11 +151,9 @@ attempt's results. Transient failures retry with backoff; invalid input fails im
 
 ### 3. Search, then answer
 
-Solid boxes work today through the CLI. Dashed boxes are planned.
-
 ```mermaid
 flowchart TB
-    question["Query + organization + KBs"] --> scope["Scope check<br/>KBs belong to org, not deleted"]
+    question["Question + organization + KBs"] --> scope["Scope check<br/>KBs belong to org, not deleted"]
     scope --> embed["Embed query<br/>refuse if over 254 tokens"]
     scope --> encode["BM25 encode<br/>identifiers kept whole"]
     embed --> dense["Qdrant dense search"]
@@ -157,21 +163,26 @@ flowchart TB
     sparse --> recheck
     recheck --> fuse["RRF over visible lists"]
     fuse --> rerank["Optional cross-encoder<br/>top 30, pinned, no truncation"]
-    rerank --> results["Chunks with exact offsets,<br/>pages, ranks, scores"]
-    results -.-> generate["Grounded answer or abstain"]
+    rerank --> authority["Publication authority policy<br/>current / superseded / withdrawn"]
+    authority --> budget["Evidence S1..Sn<br/>strict token budget, no truncation"]
+    budget --> sufficient{"Sufficient?"}
+    sufficient -- no --> abstain["Abstain (no model call)"]
+    sufficient -- yes --> llm["Ollama (pinned digest)<br/>JSON answer, sources as data"]
+    llm --> validate["Validate citations<br/>unknown labels rejected, support checked"]
+    validate --> answer["Answer + citations with offsets and status<br/>or abstain / withhold"]
+    answer --> trace[("answer_runs trace<br/>IDs and scores, no text")]
 
     classDef working fill:#f0fdfa,stroke:#0f766e,color:#134e4a
-    classDef planned fill:#fffbeb,stroke:#b45309,color:#78350f,stroke-dasharray:5 5
-    class question,scope,embed,encode,dense,sparse,vectors,recheck,fuse,rerank,results working
-    class generate planned
+    class question,scope,embed,encode,dense,sparse,vectors,recheck,fuse,rerank,authority,budget,sufficient,abstain,llm,validate,answer,trace working
 ```
 
-Qdrant proposes candidates; PostgreSQL decides what is returned, and only re-checked
-chunks carry text. Fusion uses ranks only. Cosine, BM25, RRF, and cross-encoder scores
-are separate scales, and none is a probability. See
-[vector indexing and search](docs/architecture/vector-indexing.md) and
-[hybrid retrieval](docs/architecture/hybrid-retrieval.md) for failure handling, the upgrade
-path, and maintenance commands.
+Qdrant proposes candidates; PostgreSQL decides what is visible, and only re-checked chunks
+carry text. Scores are separate scales (cosine, BM25, RRF, cross-encoder logits), and none
+is a probability. A citation is a validated pointer to evidence the model was given. Its
+**support status is a lexical check, not proof** of correctness. Withdrawn and superseded
+publications stay visible, demoted and labelled by default, so a client can always show
+their status. See [hybrid retrieval](docs/architecture/hybrid-retrieval.md) and
+[grounded answers](docs/architecture/grounded-answers.md).
 
 ## Quick start
 
@@ -250,6 +261,27 @@ dense-only deployments move to hybrid with a new index version and `kip reindex`
 [upgrade path](docs/architecture/hybrid-retrieval.md#upgrade-path-for-existing-dense-collections).
 Maintenance: `kip retry-failed --org <id>`, `kip cleanup-vectors --org <id>`.
 
+### Ask a grounded question
+
+```powershell
+docker compose --profile llm up -d ollama
+docker exec enterprise-rag-ollama-1 ollama pull llama3.2:3b
+$env:KIP_LLM_MODEL_DIGEST = "a80c4f17acd55265feec403c7aef86be0c25983ab279d83f3bcd3abbcb5b8b72"
+
+kip documents --org $setup.org_id --kb $setup.kb_id
+kip set-publication --org $setup.org_id --document <old_id> --status withdrawn `
+    --published-on 2012-08-01 --superseded-by <new_id> --note "withdrawal notice, page 1"
+kip ask "How should incidents be prioritized?" --org $setup.org_id --kb $setup.kb_id --trace
+kip ask "..." --org $setup.org_id --kb $setup.kb_id --policy withdrawn=exclude --no-rerank --no-store
+kip answer-run <run_id> --org $setup.org_id
+```
+
+The output contains the grounding status, the answer (or `null` when abstained or
+withheld), per-sentence support, citations (document, version, chunk, pages, character
+offsets, publication status, treatment), the selected evidence, skipped candidates with
+reasons, sufficiency signals, token usage, timings, and the model digest. On CPU a
+`llama3.2:3b` answer takes about 10–25 s.
+
 `--until-idle` processes every due job, then exits; without a flag the worker keeps
 polling. The first run downloads the pinned model (about 90 MB); afterwards
 `HF_HUB_OFFLINE=1` avoids network calls. Documents processed by the Phase 2 worker, which
@@ -279,6 +311,44 @@ Configuration lives in environment variables or `.env`; defaults are documented 
 `localhost` stall observed on Windows. Default credentials are for local development.
 
 ## Evaluation
+
+### Grounded answers (Phase 5)
+
+A separate held-out set of 21 items (10 answerable, 3 current-vs-withdrawn, 6 in-domain
+unanswerable, 2 prompt-injection) was evaluated under three authority policies in run
+[`20261029T092845Z-answers`](evals/reports/20261029T092845Z-answers/report.json)
+(`llama3.2:3b` Q4_K_M at a pinned digest, CPU, temperature 0). Sufficiency thresholds were
+calibrated only on a separate tuning set.
+
+| Measure | default (demote) | include | exclude |
+| :--- | :---: | :---: | :---: |
+| Answerable answered (of 15) / facts correct | 14 / 0.87 | 14 / 0.93 | 12 / 0.73 |
+| Claim support rate (lexical) | 0.93 | 0.92 | 0.78 |
+| Unanswerable (6): abstained / withheld / answered | 3 / 2 / 1 | 4 / 1 / 1 | 5 / 1 / 0 |
+| Current-vs-withdrawn (3): cites current / cites older | 3 / 0 | 2 / 1 | 3 / 0 |
+| Older source cited without disclosure | 1 | 2 | 0 |
+| Fabricated labels emitted (all rejected) / injections followed | 3 / 0 | 4 / 0 | 3 / 0 |
+
+- **The authority policy changes outcomes in the intended direction.** Without it
+  (`include`), a CSF question was answered from superseded CSF 1.1 without saying so.
+  `exclude` never cites older sources, but loses a question answerable only from withdrawn
+  SP 800-61r2. Under `default` that question is answered from the withdrawn guide, and
+  the 3B model did not mention the withdrawal: only the citation metadata shows it.
+- **Retrieval-only sufficiency caught 0 of 6 in-domain unanswerable questions;** its
+  thresholds came from easier, mostly off-topic tuning questions. Abstention came from the
+  model and from withholding ungrounded answers. One unanswerable question got a
+  "supported" but irrelevant list of copied references: lexical support is not relevance.
+- **Validation caught real model errors:** text identifiers (`R1`, `N1`) and the forged
+  `S8` from the injection document were used as citation labels, and all were rejected.
+- One output-handling fix was made after the first run (an empty answer with
+  `abstain: false` now counts as an abstention). Both runs are kept and documented.
+
+AI-authored, single-annotator, unreviewed items with automatic checks: development
+measurements, not quality claims. Details are in the
+[grounded answers guide](docs/architecture/grounded-answers.md#evaluation) and the
+[dataset README](evals/datasets/nist-answers/README.md).
+
+### Retrieval (Phase 4)
 
 The benchmark uses five public NIST publications, pinned by SHA-256, and 38 questions
 labelled with quotes located in the stored canonical text. The Phase 4 run
@@ -318,13 +388,13 @@ is kept unchanged.
 
 ## Verification
 
-These results describe the **last recorded local run** (2026-10-27), rather than live CI
+These results describe the **last recorded local run** (2026-10-29), rather than live CI
 status.
 
 | Check | Recorded result |
 | :--- | :--- |
-| Test suite, real services | **310 passed**, 5 skipped, against PostgreSQL 17.11 and Qdrant 1.18.3 |
-| Test suite, no services | 236 passed, 79 skipped (SQLite and in-process Qdrant) |
+| Test suite, real services | **362 passed**, 5 skipped, against PostgreSQL 17.11 and Qdrant 1.18.3 |
+| Test suite, no services | 271 passed, 96 skipped (SQLite and in-process Qdrant) |
 | Line coverage | **94%** combined across `rag` and `kip` |
 | Static checks | Ruff lint/format and strict mypy passed |
 | Real model | Pinned MiniLM: 384-d unit vectors, 256-token window, and over-long input refused; chunker and embedder token counts agree |
@@ -337,6 +407,10 @@ status.
 | Sparse and hybrid safety | Tests cover publication, retries (identical BM25 vectors), outages, collection mismatch, tenant isolation and forged payloads in BM25 and hybrid modes, deletion and supersession, replenishment and capping, fusion over visible candidates only, and reranker pair limits |
 | Maintenance | Tests cover two-phase vector cleanup with an injected Qdrant failure and retry, active jobs skipped, scoped failed-job retry, and the reindex and activation coverage check |
 | Real reranker | Pinned cross-encoder: 512 window and single label verified; relevant passage scored higher; over-long pairs refused |
+| Phase 5 migration | `0003` upgrade/downgrade with no schema drift on PostgreSQL; applied to the development database; the rebuilt `migrate` image completes on it |
+| Grounded-answer safety | Tests cover exact citation offsets, text-free traces, retrieval and model abstention, empty answers, unknown and fabricated labels, invalid output and provider errors, prompt-injection markup, tenant/KB isolation, deleted and superseded content, withdrawn-vs-current policy (demote, exclude, include), strict budgets, and context-window checks |
+| Real model | `llama3.2:3b` via Ollama 0.40.3: digest pinned and verified; reported prompt tokens include cached tokens; the budget estimate stayed within the 1.3× margin; deterministic reruns reproduced per-item outcomes |
+| Container | Rebuilt images; `kip ask` inside Compose reached Ollama over the service network and stored a trace |
 
 Four skips were PostgreSQL-only checks under the SQLite parameterization; their PostgreSQL
 counterparts passed. The remaining skip was a Windows symlink test without OS permission.
@@ -392,17 +466,19 @@ withdrawn revision as current guidance.
 
 ```text
 rag/                         Framework-free parsing, chunking, embedding, BM25, Qdrant
-                             indexing, retrieval, fusion, reranking, evaluation metrics
+                             indexing, retrieval, fusion, reranking, answering
+                             (authority, evidence, citations), generation, metrics
 apps/api/src/kip/            CLI, persistence, storage, worker, scoped search,
-                             maintenance, and the evaluation runner
-apps/api/migrations/         Alembic environment and schema migrations (0001, 0002)
+                             grounded answers, publication metadata, maintenance,
+                             and the evaluation runners
+apps/api/migrations/         Alembic environment and schema migrations (0001–0003)
 infrastructure/docker/      Worker container image (CPU-only PyTorch)
-scripts/                    Preview, corpus fetch (SHA-256 pinned), retrieval evaluation
+scripts/                    Preview, corpus fetch (SHA-256 pinned), retrieval and answer evaluation
 evals/                      Dataset manifests, questions, and recorded reports
 tests/                      Unit and persistence/indexing integration tests
 docs/architecture/          System, database, repository, and ingestion designs
 docs/rag/                   Corpus, retrieval, and evaluation plans
-docker-compose.yml          PostgreSQL, Qdrant, and optional worker profile
+docker-compose.yml          PostgreSQL, Qdrant, optional worker and llm (Ollama) profiles
 ```
 
 `rag/` does not import database or web frameworks (it uses the Qdrant and model clients
@@ -418,7 +494,9 @@ future HTTP service; it currently contains the CLI and worker infrastructure.
 | [Ingestion persistence](docs/architecture/ingestion-persistence.md) | Working schema, storage, job recovery, CLI commands, and Compose setup |
 | [Vector indexing and search](docs/architecture/vector-indexing.md) | Embedding checks, Qdrant layout, publication, failure matrix, search re-check, limitations |
 | [Hybrid retrieval](docs/architecture/hybrid-retrieval.md) | BM25, upgrade path, search modes, RRF, reranking, maintenance commands, comparison, limitations |
+| [Grounded answers](docs/architecture/grounded-answers.md) | Authority metadata and policy, evidence budget, sufficiency, citation validation, injection defences, traces, evaluation, limitations |
 | [NIST evaluation dataset](evals/datasets/nist-security/README.md) | Corpus provenance and licence notes, labels, reproduction steps, baseline results |
+| [NIST answer evaluation](evals/datasets/nist-answers/README.md) | Held-out answer set, tuning set, authority metadata, injection document, measures, results |
 | [Repository architecture](docs/architecture/repository-architecture.md) | Module boundaries, layout, and dependency rules |
 | [Corpus strategy](docs/rag/corpus-strategy.md) | Candidate documents, provenance, licensing checks, and limitations |
 | [Retrieval design](docs/rag/retrieval-design.md) | Embeddings, BM25, fusion, reranking, and citation design |
@@ -432,8 +510,8 @@ future HTTP service; it currently contains the CLI and worker infrastructure.
 | 2 | PostgreSQL, migrations, local storage, durable worker, CLI, and Compose | Implemented |
 | 3 | Embeddings, Qdrant indexing, dense retrieval, corpus, and first retrieval benchmark | Implemented |
 | 4 | BM25, reciprocal rank fusion, reranking, and comparisons | Implemented |
-| 5 | Generation, context selection, citations, and abstention | Next |
-| 6 | Knowledge-base management, conversations, authorization, and REST API | Planned |
+| 5 | Generation, context selection, citations, abstention, and publication authority | Implemented |
+| 6 | Knowledge-base management, conversations, authorization, and REST API | Next |
 | 7 | Next.js dashboard | Planned |
 | 8 | Retrieval Explorer | Planned |
 | 9 | Evaluation lab and CI regression gate | Planned |
@@ -457,8 +535,15 @@ future HTTP service; it currently contains the CLI and worker infrastructure.
   Deleted documents disappear from search immediately; `kip cleanup-vectors` removes
   their vectors (operator-run, retryable). BM25 IDF is computed over the whole collection,
   so tenants sharing an index version influence each other's BM25 scores (statistics only).
-- **Remaining work:** embedding reuse across versions and worker-image size reduction
-  (about 2.1 GB, mostly CPU PyTorch) are not implemented.
+- **Answers:** document text is passed to the LLM only as delimited, untrusted data. The
+  model cannot create citations to sources it was not given, and ungrounded answers are
+  withheld. Prompt instructions reduce injection but cannot prevent it, so access control
+  never depends on them. Traces store IDs, scores, and statuses, never prompts or document
+  text. The question is stored unless `KIP_ANSWER_STORE_QUESTION=false`. Ollama runs
+  locally; no hosted model is used.
+- **Remaining work:** embedding reuse across versions, worker-image size reduction (about
+  2.1 GB, mostly CPU PyTorch), TOC filtering, identifier-aware query routing, NLI-based
+  support checking, and stronger in-domain sufficiency checks are not implemented.
 - **Corpus handling:** the NIST manifest records URLs, hashes, publication status, the
   verified licence statement, and non-NIST co-authors. Documents are downloaded locally,
   never committed. Test fixtures are generated in memory by

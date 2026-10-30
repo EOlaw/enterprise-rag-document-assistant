@@ -161,8 +161,78 @@ kip answer-run <run_id> --org $org
 
 ## Evaluation
 
-RESULTS_PLACEHOLDER
+Final run [`20261029T092845Z-answers`](../../evals/reports/20261029T092845Z-answers/report.json):
+21 held-out items (AI-authored, not human-reviewed). Model `llama3.2:3b` (Q4_K_M) at digest
+`a80c4f17…`, Ollama 0.40.3, CPU only, temperature 0, seed 7. Hybrid retrieval with
+reranking, 1,500-token evidence budget, thresholds from the tuning set.
+
+| Measure | default (demote) | include | exclude |
+|---|---|---|---|
+| Answerable answered (15) | 14 | 14 | 12 |
+| Facts correct, answerable | 0.867 | 0.933 | 0.733 |
+| Gold passage in evidence | 0.933 | 0.933 | 0.867 |
+| Claim support rate (lexical) | 0.932 | 0.921 | 0.783 |
+| Citation correct rate (covers gold quote) | 0.50 | 0.52 | 0.53 |
+| Unanswerable (6): abstained / withheld / answered | 3 / 2 / 1 | 4 / 1 / 1 | 5 / 1 / 0 |
+| Retrieval-only check flagged unanswerable | 0 / 6 | 0 / 6 | 1 / 6 |
+| Current-vs-withdrawn (3): cites current / cites older | 3 / 0 | 2 / 1 | 3 / 0 |
+| Older source cited without disclosure (any item) | 1 | 2 | 0 |
+| Fabricated labels emitted (all rejected) | 3 | 4 | 3 |
+| Injection payload followed (2) | 0 | 0 | 0 |
+| p50 latency per question | 22 s | 16 s | 10 s |
+
+What this shows:
+
+* **The authority policy works where it acts, and its trade-off is visible.** With
+  `include` (no policy), one CSF question was answered from superseded CSF 1.1 without
+  saying so. `default` (demote) cited current sources for all three contrast questions.
+  `exclude` never cites an older source, but a06, answerable only from withdrawn
+  SP 800-61r2, then has no evidence and abstains. Under `default`, a06 is answered from
+  the withdrawn guide **without** disclosing that it is withdrawn. The model ignored prompt
+  rule 4, although each citation's metadata carries `publication_status: withdrawn`.
+  Clients must show citation status rather than rely on the answer text.
+* **Retrieval-only sufficiency did not catch in-domain unanswerable questions** (0 of 6).
+  Their top rerank logits were −1.9 to 4.4, above the −2.0 floor calibrated on mostly
+  off-topic tuning questions. Abstention came from the model (3) and from withholding
+  ungrounded answers (2). One unanswerable question (ISO 27001 Annex A 5.1) received a
+  "grounded" answer: a list of NIST SP 800-53 references copied from a CSF 1.1
+  informative-references table. Each line occurs in the source, so the lexical checker
+  marks it supported, yet it does not answer the question. **Support is not relevance.**
+* **Citation validation caught real errors.** The model cited recommendation IDs from the
+  text (`R1`, `R2`, `N1`) as if they were labels, and in two runs repeated the forged `S8`
+  label from the injection document. All were removed and counted, and `grounded` was
+  blocked.
+* **Citation correct rate is low (0.50) by construction:** answers often cite several
+  relevant chunks, and only those covering the labelled quote count as correct.
+* **One post-evaluation fix, disclosed:** the first run
+  ([`20261027T220153Z-answers`](../../evals/reports/20261027T220153Z-answers/report.json))
+  counted `{"abstain": false, "sentences": []}` as `invalid_output`. It is now
+  `abstained_model` with the reason "model returned no answer sentences (abstain flag not
+  set)". No threshold or prompt was changed. Every other per-item outcome of the rerun was
+  identical to the first run.
+* Retrieval-only calibration on the tuning set (separate questions): balanced accuracy
+  0.987 with reranking (logit ≥ −2.0) and 0.755 without (coverage ≥ 0.7).
 
 ## Limitations
 
-LIMITATIONS_PLACEHOLDER
+* **Small, AI-authored evaluation:** 21 items with substring fact checks, a lexical support
+  checker and a keyword disclosure check, from a single annotator with no human review. The
+  numbers describe this setup, not general answer quality.
+* **The sufficiency check is weak on in-domain unanswerable questions;** its tuning set was
+  easier than the evaluation set. It is not recalibrated here, because doing so after seeing
+  the evaluation would fit the evaluation.
+* **The support check is lexical:** it does not detect irrelevant-but-quoted answers or
+  inverted meaning. An NLI or LLM judge validated against human labels is future work.
+* **Withdrawn-source disclosure depends on the model,** and the 3B model sometimes ignores
+  it. The citation metadata is authoritative.
+* **Publication metadata is entered by operators** and not inferred from documents. The
+  dates for SP 800-61r2 and 800-63B-4 use the first of the month (recorded in notes).
+* **CPU latency** is 10–22 s per answer with a 3B model; quality is bounded by that model.
+* **Ollama** exposes no tokenizer endpoint, so budgets use the embedding tokenizer with a
+  1.3× margin, plus a post-hoc check of the reported prompt tokens (verified to report the
+  full prompt even when the KV cache is reused).
+* **No streaming, conversations, or HTTP API.** Authentication and permissions remain
+  Phase 6.
+* **Unchanged from Phase 4:** BM25 statistics are shared across tenants; cleanup is
+  operator-triggered and does not remove every failed-attempt vector; embedding reuse, a
+  smaller worker image, TOC filtering and identifier-aware routing remain future work.

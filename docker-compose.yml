@@ -59,6 +59,8 @@ services:
       KIP_DATABASE_URL: postgresql+psycopg://kip:${POSTGRES_PASSWORD:-kip_dev_only}@postgres:5432/kip
       KIP_STORAGE_ROOT: /app/data/objects
       KIP_QDRANT_URL: http://qdrant:6333
+      # Used by `kip ask` run in this image; requires the optional `llm` profile.
+      KIP_OLLAMA_URL: http://ollama:11434
       HF_HOME: /app/data/huggingface
       HF_HUB_DISABLE_TELEMETRY: "1"
       TOKENIZERS_PARALLELISM: "false"

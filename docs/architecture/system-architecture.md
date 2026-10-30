@@ -137,6 +137,12 @@ Key properties:
 
 ## 4. Query lifecycle
 
+> **Status (Phase 5):** implemented through the CLI (`kip ask`), without the HTTP API,
+> streaming, or user authorization (Phase 6). Authorization is organization/KB scope only.
+> The citation support check is lexical rather than NLI, and publication authority (current,
+> superseded, withdrawn) shapes evidence selection. See
+> [grounded answers](grounded-answers.md).
+
 ```mermaid
 sequenceDiagram
     autonumber
